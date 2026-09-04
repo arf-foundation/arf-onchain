@@ -1,0 +1,32 @@
+# Env
+.env
+.env.local
+
+# Node
+node_modules/
+dist/
+build/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Foundry
+out/
+cache/
+broadcast/
+gas-reports/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+
+# Submodules (keep them, but ignore local modifications)
+lib/

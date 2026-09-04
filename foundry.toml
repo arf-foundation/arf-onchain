@@ -1,0 +1,11 @@
+[profile.default]
+src = "contracts"
+out = "out"
+libs = ["lib"]
+solc_version = "0.8.25"
+ffi = true
+via-ir = false
+remappings = [
+    "@openzeppelin/=lib/openzeppelin-contracts/",
+    "forge-std/=lib/forge-std/src/"
+]
