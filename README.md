@@ -1014,6 +1014,28 @@ Security reports should not be disclosed publicly before the maintainers have ha
 
 > Autonomous agents need an execution-control layer that can enforce identity, policy, risk, and authorization before economic actions reach the blockchain.
 
+## 🤝 Looking for Teammates
+
+**ARF Onchain is looking for collaborators!**
+
+I'm building this for the **Monad Metropolis Hackathon** and actively recruiting:
+
+| Role | Skills | What You'll Do |
+|------|--------|----------------|
+| **Backend/Systems Engineer** | Rust, Go, Python | Build the API layer, integrate with Monad, optimize performance |
+| **AI/ML Engineer** | Python, Bayesian inference, LLMs | Enhance the reference risk engine, integrate with Qwen |
+| **Frontend Developer** | React, Next.js, TypeScript | Build the governance dashboard and decision explorer |
+| **DevRel/Community** | Technical writing, Discord/Twitter | Help with docs, demos, and hackathon visibility |
+
+**Why join ARF Onchain?**
+
+- Work on a real governance infrastructure project that solves a critical problem in autonomous AI.
+- Existing repo with tests passing, contracts deployed, and a clear Week 2 plan.
+- Built on Monad – high-throughput, low-latency execution.
+- Strong prize potential: $30K track prize + multiple bounties.
+
+**Interested?** DM me on Discord (@petterjuan) or open an issue on GitHub.
+
 ---
 
 # One-Line Architecture
