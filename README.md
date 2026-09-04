@@ -1,3 +1,8 @@
+[![Monad Metropolis](https://img.shields.io/badge/Monad-Metropolis-6A5ACD?style=for-the-badge)](https://hackathon.monad.xyz/)
+[![Track: Trust, Identity & AI Infrastructure](https://img.shields.io/badge/Track-Trust%2C%20Identity%20%26%20AI%20Infrastructure-00B4D8?style=for-the-badge)]()
+[![Week 1 Complete](https://img.shields.io/badge/Week%201-Complete-2ECC40?style=for-the-badge)]()
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+
 # ARF Onchain
 
 ## Autonomous Agent Governance Infrastructure for Monad
