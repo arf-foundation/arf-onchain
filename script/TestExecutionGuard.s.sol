@@ -34,7 +34,7 @@ contract TestExecutionGuard is Script {
         bytes32 policyHash = bytes32(0);
         uint256 chainId = 10143;
         uint256 expiry = block.timestamp + 3600;
-        uint256 nonce = 0;
+        uint256 nonce = 1;
 
         bytes32 intentHash = guard.computeIntentHash(
             agent,
