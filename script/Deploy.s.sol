@@ -23,10 +23,12 @@ contract Deploy is Script {
         RiskAttestationRegistry attestationRegistry = new RiskAttestationRegistry();
         console.log("RiskAttestationRegistry deployed at:", address(attestationRegistry));
 
+        // Pass deployer as trusted evaluator (for testing)
         ExecutionGuard executionGuard = new ExecutionGuard(
             address(agentRegistry),
             address(policyRegistry),
-            address(attestationRegistry)
+            address(attestationRegistry),
+            msg.sender
         );
         console.log("ExecutionGuard deployed at:", address(executionGuard));
 
