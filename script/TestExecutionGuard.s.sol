@@ -29,7 +29,7 @@ contract TestExecutionGuard is Script {
         // Prepare transaction
         address agent = deployer;
         address target = deployer;
-        uint256 value = 0.001 ether;
+        uint256 value = 0 ether;
         bytes memory data = "";
         bytes32 policyHash = bytes32(0);
         uint256 chainId = 10143;
