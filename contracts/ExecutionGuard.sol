@@ -22,25 +22,11 @@ contract ExecutionGuard is Ownable, ReentrancyGuard {
 
     address public trustedEvaluator;
 
-    event ExecutionApproved(
-        bytes32 indexed intentHash,
-        address indexed agent,
-        address indexed target,
-        uint256 value
-    );
+    event ExecutionApproved(bytes32 indexed intentHash, address indexed agent, address indexed target, uint256 value);
 
-    event ExecutionDenied(
-        bytes32 indexed intentHash,
-        address indexed agent,
-        uint256 riskScore,
-        string reason
-    );
+    event ExecutionDenied(bytes32 indexed intentHash, address indexed agent, uint256 riskScore, string reason);
 
-    event ExecutionEscalated(
-        bytes32 indexed intentHash,
-        address indexed agent,
-        uint256 riskScore
-    );
+    event ExecutionEscalated(bytes32 indexed intentHash, address indexed agent, uint256 riskScore);
 
     constructor(
         address _agentRegistry,
@@ -71,37 +57,22 @@ contract ExecutionGuard is Ownable, ReentrancyGuard {
 
         // 2. Verify caller is authorized
         AgentRegistry.Agent memory agent = agentRegistry.getAgent(agentId);
-        require(
-            attestation.agent == msg.sender || agent.wallet == msg.sender,
-            "ExecutionGuard: caller not authorized"
-        );
+        require(attestation.agent == msg.sender || agent.wallet == msg.sender, "ExecutionGuard: caller not authorized");
 
         // 3. Verify attestation not already used
         require(
-            !attestationRegistry.isAttestationUsed(attestation.intentHash),
-            "ExecutionGuard: attestation already used"
+            !attestationRegistry.isAttestationUsed(attestation.intentHash), "ExecutionGuard: attestation already used"
         );
 
         // 4. Verify evaluator is trusted
-        require(
-            attestation.evaluator == trustedEvaluator,
-            "ExecutionGuard: untrusted evaluator"
-        );
+        require(attestation.evaluator == trustedEvaluator, "ExecutionGuard: untrusted evaluator");
 
         // 5. Verify ECDSA signature
-        bytes32 signedHash = keccak256(
-            abi.encodePacked("\x19Ethereum Signed Message:\n32", attestation.intentHash)
-        );
-        require(
-            signedHash.recover(signature) == trustedEvaluator,
-            "ExecutionGuard: invalid signature"
-        );
+        bytes32 signedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", attestation.intentHash));
+        require(signedHash.recover(signature) == trustedEvaluator, "ExecutionGuard: invalid signature");
 
         // 6. Verify expiry
-        require(
-            attestation.validUntil >= block.timestamp,
-            "ExecutionGuard: attestation expired"
-        );
+        require(attestation.validUntil >= block.timestamp, "ExecutionGuard: attestation expired");
 
         // 7. Verify intent hash matches actual transaction
         bytes32 computedIntentHash = computeIntentHash(
@@ -114,51 +85,28 @@ contract ExecutionGuard is Ownable, ReentrancyGuard {
             attestation.validUntil,
             agent.nonce
         );
-        require(
-            computedIntentHash == attestation.intentHash,
-            "ExecutionGuard: intent hash mismatch"
-        );
+        require(computedIntentHash == attestation.intentHash, "ExecutionGuard: intent hash mismatch");
 
         // 8. Verify policy is active (if policyHash is non-zero)
         if (attestation.policyHash != bytes32(0)) {
-            require(
-                policyRegistry.isPolicyActive(attestation.policyHash),
-                "ExecutionGuard: policy inactive"
-            );
+            require(policyRegistry.isPolicyActive(attestation.policyHash), "ExecutionGuard: policy inactive");
         }
 
         // 9. Process decision
         if (attestation.decision == RiskAttestationRegistry.Decision.APPROVE) {
-            require(
-                value <= agent.maxTransactionValue,
-                "ExecutionGuard: exceeds per-tx limit"
-            );
+            require(value <= agent.maxTransactionValue, "ExecutionGuard: exceeds per-tx limit");
 
             attestationRegistry.recordAttestation(attestation);
 
-            (bool success, ) = target.call{value: value}(data);
+            (bool success,) = target.call{value: value}(data);
             require(success, "ExecutionGuard: execution failed");
 
-            emit ExecutionApproved(
-                attestation.intentHash,
-                attestation.agent,
-                target,
-                value
-            );
+            emit ExecutionApproved(attestation.intentHash, attestation.agent, target, value);
         } else if (attestation.decision == RiskAttestationRegistry.Decision.ESCALATE) {
-            emit ExecutionEscalated(
-                attestation.intentHash,
-                attestation.agent,
-                attestation.riskScore
-            );
+            emit ExecutionEscalated(attestation.intentHash, attestation.agent, attestation.riskScore);
             revert("ExecutionGuard: ESCALATE requires human approval");
         } else if (attestation.decision == RiskAttestationRegistry.Decision.DENY) {
-            emit ExecutionDenied(
-                attestation.intentHash,
-                attestation.agent,
-                attestation.riskScore,
-                "Decision DENY"
-            );
+            emit ExecutionDenied(attestation.intentHash, attestation.agent, attestation.riskScore, "Decision DENY");
             revert("ExecutionGuard: execution denied by ARF");
         } else {
             revert("ExecutionGuard: unknown decision");
@@ -175,17 +123,6 @@ contract ExecutionGuard is Ownable, ReentrancyGuard {
         uint256 expiry,
         uint256 nonce
     ) public pure returns (bytes32) {
-        return keccak256(
-            abi.encodePacked(
-                agent,
-                target,
-                value,
-                data,
-                policyHash,
-                chainId,
-                expiry,
-                nonce
-            )
-        );
+        return keccak256(abi.encodePacked(agent, target, value, data, policyHash, chainId, expiry, nonce));
     }
 }

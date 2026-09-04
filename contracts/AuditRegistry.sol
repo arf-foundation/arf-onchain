@@ -17,12 +17,7 @@ contract AuditRegistry is Ownable {
 
     AuditEntry[] public auditLog;
 
-    event AuditRecorded(
-        bytes32 indexed intentHash,
-        address indexed agent,
-        uint16 riskScore,
-        uint8 decision
-    );
+    event AuditRecorded(bytes32 indexed intentHash, address indexed agent, uint16 riskScore, uint8 decision);
 
     constructor() Ownable(msg.sender) {}
 
@@ -35,16 +30,18 @@ contract AuditRegistry is Ownable {
         uint8 decision,
         uint8 reversibility
     ) external onlyOwner {
-        auditLog.push(AuditEntry({
-            intentHash: intentHash,
-            agent: agent,
-            target: target,
-            value: value,
-            riskScore: riskScore,
-            decision: decision,
-            reversibility: reversibility,
-            timestamp: block.timestamp
-        }));
+        auditLog.push(
+            AuditEntry({
+                intentHash: intentHash,
+                agent: agent,
+                target: target,
+                value: value,
+                riskScore: riskScore,
+                decision: decision,
+                reversibility: reversibility,
+                timestamp: block.timestamp
+            })
+        );
         emit AuditRecorded(intentHash, agent, riskScore, decision);
     }
 

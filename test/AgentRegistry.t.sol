@@ -41,13 +41,7 @@ contract AgentRegistryTest is Test {
     /// @dev Registers a valid agent and verifies stored fields.
     function testRegisterAgent() public {
         vm.prank(OWNER);
-        registry.registerAgent(
-            AGENT_ID,
-            WALLET,
-            AGENT_OWNER,
-            MAX_TX,
-            DAILY_LIMIT
-        );
+        registry.registerAgent(AGENT_ID, WALLET, AGENT_OWNER, MAX_TX, DAILY_LIMIT);
 
         (address returnedWallet, address returnedOwner, uint256 maxTx, uint256 dailyLimit, bool active, uint256 nonce) =
             registry.agents(AGENT_ID);
@@ -97,7 +91,7 @@ contract AgentRegistryTest is Test {
         vm.prank(WALLET);
         registry.incrementNonce(AGENT_ID);
 
-        (, , , , , uint256 nonce) = registry.agents(AGENT_ID);
+        (,,,,, uint256 nonce) = registry.agents(AGENT_ID);
         assertEq(nonce, 1, "nonce should be incremented to 1");
     }
 }

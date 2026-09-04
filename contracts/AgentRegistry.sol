@@ -67,10 +67,7 @@ contract AgentRegistry is Ownable {
     }
 
     function incrementNonce(bytes32 agentId) external {
-        require(
-            msg.sender == agents[agentId].wallet || msg.sender == owner(),
-            "AgentRegistry: not authorized"
-        );
+        require(msg.sender == agents[agentId].wallet || msg.sender == owner(), "AgentRegistry: not authorized");
         agents[agentId].nonce++;
     }
 }

@@ -4,8 +4,16 @@ pragma solidity ^0.8.19;
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 
 contract RiskAttestationRegistry is Ownable {
-    enum Decision { APPROVE, ESCALATE, DENY }
-    enum Reversibility { REVERSIBLE, COMPENSABLE, IRREVERSIBLE }
+    enum Decision {
+        APPROVE,
+        ESCALATE,
+        DENY
+    }
+    enum Reversibility {
+        REVERSIBLE,
+        COMPENSABLE,
+        IRREVERSIBLE
+    }
 
     struct RiskAttestation {
         bytes32 intentHash;
@@ -23,12 +31,7 @@ contract RiskAttestationRegistry is Ownable {
 
     mapping(bytes32 => bool) public usedAttestations;
 
-    event AttestationIssued(
-        bytes32 indexed intentHash,
-        address indexed agent,
-        uint16 riskScore,
-        Decision decision
-    );
+    event AttestationIssued(bytes32 indexed intentHash, address indexed agent, uint16 riskScore, Decision decision);
 
     event AttestationUsed(bytes32 indexed intentHash);
 

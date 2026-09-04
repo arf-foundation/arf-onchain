@@ -25,10 +25,7 @@ contract Deploy is Script {
 
         // Pass deployer as trusted evaluator (for testing)
         ExecutionGuard executionGuard = new ExecutionGuard(
-            address(agentRegistry),
-            address(policyRegistry),
-            address(attestationRegistry),
-            msg.sender
+            address(agentRegistry), address(policyRegistry), address(attestationRegistry), msg.sender
         );
         console.log("ExecutionGuard deployed at:", address(executionGuard));
 

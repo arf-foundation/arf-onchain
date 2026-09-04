@@ -22,12 +22,7 @@ contract ExecutionGuardTest is Test {
         agentReg = new AgentRegistry();
         policyReg = new PolicyRegistry();
         attestReg = new RiskAttestationRegistry();
-        guard = new ExecutionGuard(
-            address(agentReg),
-            address(policyReg),
-            address(attestReg),
-            deployer
-        );
+        guard = new ExecutionGuard(address(agentReg), address(policyReg), address(attestReg), deployer);
         // Register an agent for testing
         vm.prank(deployer);
         agentReg.registerAgent(agentId, agentWallet, agentWallet, 10000 ether, 50000 ether);
