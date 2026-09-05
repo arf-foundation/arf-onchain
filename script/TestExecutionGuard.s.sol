@@ -6,50 +6,14 @@ import {ExecutionGuard} from "../contracts/ExecutionGuard.sol";
 import {RiskAttestationRegistry} from "../contracts/RiskAttestationRegistry.sol";
 
 contract TestExecutionGuard is Script {
-    function run() external {
-        uint256 deployerPrivateKey = vm.envUint("DEPLOYER_PRIVATE_KEY");
-        address deployer = vm.addr(deployerPrivateKey);
-
-        // === NEW DEPLOYMENT ADDRESS ===
-        address guardAddr = 0x43D164C79718614fe583b5fADF29875F8938740c;
-
-        ExecutionGuard guard = ExecutionGuard(guardAddr);
-
-        // Ensure trusted evaluator is deployer
-        address currentTrusted = guard.trustedEvaluator();
-        console.log("Current trusted evaluator:", currentTrusted);
-
-        if (currentTrusted != deployer) {
-            vm.startBroadcast(deployerPrivateKey);
-            guard.setTrustedEvaluator(deployer);
-            vm.stopBroadcast();
-            console.log("Trusted evaluator updated to deployer");
-        }
-
-        // Prepare transaction
-        address agent = deployer;
-        address target = deployer;
-        uint256 value = 0 ether;
-        bytes memory data = "";
-        bytes32 policyHash = bytes32(0);
-        uint256 chainId = 10143;
-        uint256 expiry = block.timestamp + 3600;
-        uint256 nonce = 0;
-
-        bytes32 intentHash = guard.computeIntentHash(
-            agent,
-            target,
-            value,
-            data,
-            policyHash,
-            chainId,
-            expiry,
-            nonce
-        );
-        console.log("Intent Hash:", vm.toString(intentHash));
-
-        // Build attestation using named struct fields to avoid stack issues
-        RiskAttestationRegistry.RiskAttestation memory attestation;
+    /// @dev Split out of `run()` so the whole flow does not sit in one stack
+    ///      frame — as written it exceeded the EVM's 16-slot reach and the
+    ///      repository would not compile at all ("Stack too deep").
+    function buildAttestation(bytes32 intentHash, bytes32 policyHash, address agent, address evaluator, uint256 expiry)
+        internal
+        view
+        returns (RiskAttestationRegistry.RiskAttestation memory attestation)
+    {
         attestation.intentHash = intentHash;
         attestation.policyHash = policyHash;
         attestation.modelHash = bytes32(0);
@@ -57,31 +21,62 @@ contract TestExecutionGuard is Script {
         attestation.reversibility = RiskAttestationRegistry.Reversibility.REVERSIBLE;
         attestation.decision = RiskAttestationRegistry.Decision.APPROVE;
         attestation.agent = agent;
-        attestation.evaluator = deployer;
+        attestation.evaluator = evaluator;
         attestation.issuedAt = block.timestamp;
         attestation.validUntil = expiry;
         attestation.rationaleHash = bytes32(0);
+    }
 
-        // Sign the intent hash
-        bytes32 signedHash = keccak256(
-            abi.encodePacked("\x19Ethereum Signed Message:\n32", intentHash)
+    function run() external {
+        uint256 pk = vm.envUint("DEPLOYER_PRIVATE_KEY");
+
+        // NOTE: this address matches neither the deployment recorded in
+        // docs/deployments.md (0x58B7fa76...) nor any other documented guard.
+        // Confirm it before running this script against a live network.
+        ExecutionGuard guard = ExecutionGuard(0x43D164C79718614fe583b5fADF29875F8938740c);
+
+        ensureEvaluator(guard, pk);
+        executeSample(guard, pk);
+    }
+
+    /// @dev Point the guard at the deployer as trusted evaluator, if it is not already.
+    function ensureEvaluator(ExecutionGuard guard, uint256 pk) internal {
+        address deployer = vm.addr(pk);
+        address currentTrusted = guard.trustedEvaluator();
+        console.log("Current trusted evaluator:", currentTrusted);
+
+        if (currentTrusted != deployer) {
+            vm.startBroadcast(pk);
+            guard.setTrustedEvaluator(deployer);
+            vm.stopBroadcast();
+            console.log("Trusted evaluator updated to deployer");
+        }
+    }
+
+    /// @dev Build, sign and submit one zero-value self-call through the guard.
+    function executeSample(ExecutionGuard guard, uint256 pk) internal {
+        address deployer = vm.addr(pk);
+        uint256 expiry = block.timestamp + 3600;
+
+        bytes32 intentHash = guard.computeIntentHash(
+            deployer, deployer, 0, "", bytes32(0), block.chainid, expiry, 0
         );
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(deployerPrivateKey, signedHash);
-        bytes memory signature = abi.encodePacked(r, s, v);
+        console.log("Intent Hash:", vm.toString(intentHash));
 
-        console.log("Signature generated");
+        RiskAttestationRegistry.RiskAttestation memory attestation =
+            buildAttestation(intentHash, bytes32(0), deployer, deployer, expiry);
 
-        // Execute – ExecutionGuard will record the attestation internally
-        vm.startBroadcast(deployerPrivateKey);
-        guard.execute(
-            target,
-            value,
-            data,
-            attestation,
-            signature
-        );
+        vm.startBroadcast(pk);
+        guard.execute(deployer, 0, "", attestation, signIntent(pk, intentHash));
         vm.stopBroadcast();
 
         console.log("ExecutionGuard.execute() called successfully");
+    }
+
+    /// @dev Sign an intent hash in the eth_sign format ExecutionGuard checks.
+    function signIntent(uint256 pk, bytes32 intentHash) internal pure returns (bytes memory) {
+        bytes32 signedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", intentHash));
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, signedHash);
+        return abi.encodePacked(r, s, v);
     }
 }
