@@ -69,6 +69,8 @@ abstract contract GuardHarness is Test {
         guard = new ExecutionGuard(
             address(agentRegistry), address(policyRegistry), address(attestationRegistry), evaluator
         );
+        // Without this the registry rejects every consume and nothing executes.
+        attestationRegistry.setExecutionGuard(address(guard));
         target = new CallTarget();
 
         agentId = keccak256(abi.encodePacked(agent));
@@ -98,10 +100,20 @@ abstract contract GuardHarness is Test {
         return guard.computeIntentHash(who, to, value, data, policyHash, block.chainid, expiry, a.nonce);
     }
 
-    /// @dev Sign a digest as the trusted evaluator, in the format the guard checks.
-    function signAsEvaluator(bytes32 intentHash) internal pure returns (bytes memory) {
-        bytes32 digest = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", intentHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(EVALUATOR_PK, digest);
+    /**
+     * @dev Sign an attestation as the trusted evaluator.
+     *
+     * The guard verifies an EIP-712 digest over the whole struct, so this takes
+     * the attestation rather than just its intent hash. Signing only the intent
+     * hash — what the guard used to check — is what allowed a signed DENY to be
+     * executed as an APPROVE.
+     */
+    function signAsEvaluator(RiskAttestationRegistry.RiskAttestation memory att)
+        internal
+        view
+        returns (bytes memory)
+    {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(EVALUATOR_PK, guard.hashAttestation(att));
         return abi.encodePacked(r, s, v);
     }
 
@@ -134,7 +146,7 @@ abstract contract GuardHarness is Test {
             rationaleHash: keccak256("because")
         });
 
-        sig = signAsEvaluator(intentHash);
+        sig = signAsEvaluator(att);
     }
 
     /// @dev An attestation the evaluator would actually issue for a safe action.
@@ -144,6 +156,17 @@ abstract contract GuardHarness is Test {
         returns (RiskAttestationRegistry.RiskAttestation memory, bytes memory)
     {
         return attestationFor(RiskAttestationRegistry.Decision.APPROVE, 40); // 0.04
+    }
+
+    /**
+     * @dev A fresh, independent approved attestation.
+     *
+     * Use this instead of assigning from another attestation: Solidity `memory`
+     * struct assignment aliases rather than copies, so `copy = original`
+     * followed by `copy.field = x` silently rewrites the original.
+     */
+    function approvedCopy() internal view returns (RiskAttestationRegistry.RiskAttestation memory att) {
+        (att,) = attestationFor(RiskAttestationRegistry.Decision.APPROVE, 40);
     }
 
     /// @dev An attestation the evaluator would issue for an action it refuses.
