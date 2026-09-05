@@ -3,6 +3,7 @@ pragma solidity ^0.8.19;
 
 import {GuardHarness} from "./Harness.sol";
 import {AgentRegistry} from "../contracts/AgentRegistry.sol";
+import {ExecutionGuard} from "../contracts/ExecutionGuard.sol";
 import {RiskAttestationRegistry} from "../contracts/RiskAttestationRegistry.sol";
 
 /**
@@ -156,6 +157,105 @@ contract ExecutionGuardTest is GuardHarness {
     }
 
     // ------------------------------------------------------------------
+    // EIP-712 binding
+    // ------------------------------------------------------------------
+
+    /// @dev Every field must be covered, not just the ones an attacker is
+    ///      likeliest to reach for. This walks the whole struct.
+    function test_MutatingAnyAttestationFieldInvalidatesTheSignature() public {
+        (RiskAttestationRegistry.RiskAttestation memory base, bytes memory sig) = approvedAttestation();
+
+        for (uint256 i = 0; i < 8; i++) {
+            RiskAttestationRegistry.RiskAttestation memory att = approvedCopy();
+
+            if (i == 0) att.policyHash = keccak256("other-policy");
+            else if (i == 1) att.modelHash = keccak256("other-model");
+            else if (i == 2) att.riskScore = 999;
+            else if (i == 3) att.reversibility = RiskAttestationRegistry.Reversibility.IRREVERSIBLE;
+            else if (i == 4) att.decision = RiskAttestationRegistry.Decision.DENY;
+            else if (i == 5) att.issuedAt = base.issuedAt - 1;
+            else if (i == 6) att.validUntil = base.validUntil + 1;
+            else if (i == 7) att.rationaleHash = keccak256("different reason");
+
+            assertTrue(
+                guard.hashAttestation(att) != guard.hashAttestation(base), "field must change the EIP-712 digest"
+            );
+
+            vm.prank(agent);
+            vm.expectRevert();
+            guard.execute(address(target), 0, pingCalldata(), att, sig);
+        }
+
+        assertFalse(target.pinged(), "no mutated attestation may execute");
+    }
+
+    function test_DomainSeparatorBindsChainAndContract() public view {
+        bytes32 expected = keccak256(
+            abi.encode(
+                keccak256("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"),
+                keccak256("ARF Onchain"),
+                keccak256("1"),
+                block.chainid,
+                address(guard)
+            )
+        );
+        assertEq(guard.domainSeparator(), expected, "domain must bind this chain and this guard");
+    }
+
+    /// @dev A signature valid for one guard must not work on another. This is
+    ///      what stops an attestation being replayed against a redeployment.
+    function test_SignatureDoesNotTransferToAnotherGuardDeployment() public {
+        (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig) = approvedAttestation();
+
+        ExecutionGuard otherGuard = new ExecutionGuard(
+            address(agentRegistry), address(policyRegistry), address(attestationRegistry), evaluator
+        );
+        attestationRegistry.setExecutionGuard(address(otherGuard));
+
+        vm.prank(agent);
+        vm.expectRevert("ExecutionGuard: invalid signature");
+        otherGuard.execute(address(target), 0, pingCalldata(), att, sig);
+    }
+
+    // ------------------------------------------------------------------
+    // Registry binding
+    // ------------------------------------------------------------------
+
+    function test_ExecutionFailsClosedIfRegistryHasNoGuard() public {
+        RiskAttestationRegistry fresh = new RiskAttestationRegistry();
+        ExecutionGuard unbound =
+            new ExecutionGuard(address(agentRegistry), address(policyRegistry), address(fresh), evaluator);
+
+        uint256 expiry = block.timestamp + VALID_FOR;
+        bytes32 intentHash =
+            unbound.computeIntentHash(
+            agent, address(target), 0, pingCalldata(), bytes32(0), block.chainid, block.timestamp + VALID_FOR, 0
+        );
+
+        // Deliberately not calling fresh.setExecutionGuard.
+        RiskAttestationRegistry.RiskAttestation memory att = approvedCopy();
+        att.intentHash = intentHash;
+        att.validUntil = expiry;
+
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(EVALUATOR_PK, unbound.hashAttestation(att));
+
+        vm.prank(agent);
+        vm.expectRevert("RiskAttestationRegistry: not the guard");
+        unbound.execute(address(target), 0, pingCalldata(), att, abi.encodePacked(r, s, v));
+    }
+
+    function test_OnlyOwnerCanBindTheGuard() public {
+        vm.prank(attacker);
+        vm.expectRevert();
+        attestationRegistry.setExecutionGuard(attacker);
+    }
+
+    function test_GuardCannotBeBoundToZero() public {
+        vm.expectRevert("RiskAttestationRegistry: zero guard");
+        attestationRegistry.setExecutionGuard(address(0));
+    }
+
+    // ------------------------------------------------------------------
     // Expiry and replay
     // ------------------------------------------------------------------
 
@@ -250,9 +350,14 @@ contract ExecutionGuardTest is GuardHarness {
             rationaleHash: keccak256("because")
         });
 
+        // Sign before arming expectRevert. `signAsEvaluator` calls
+        // `guard.hashAttestation`, and an external call in argument position
+        // would consume the expectation and satisfy it by succeeding.
+        bytes memory sig = signAsEvaluator(att);
+
         vm.prank(agent);
         vm.expectRevert("ExecutionGuard: policy inactive");
-        guard.execute(address(target), 0, pingCalldata(), att, signAsEvaluator(intentHash));
+        guard.execute(address(target), 0, pingCalldata(), att, sig);
     }
 
     // ------------------------------------------------------------------

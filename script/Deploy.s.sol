@@ -29,6 +29,11 @@ contract Deploy is Script {
         );
         console.log("ExecutionGuard deployed at:", address(executionGuard));
 
+        // Required. The registry rejects every consume until it knows its
+        // guard, so execution fails closed if this is ever skipped.
+        attestationRegistry.setExecutionGuard(address(executionGuard));
+        console.log("RiskAttestationRegistry bound to guard");
+
         TreasuryVault treasuryVault = new TreasuryVault();
         console.log("TreasuryVault deployed at:", address(treasuryVault));
 

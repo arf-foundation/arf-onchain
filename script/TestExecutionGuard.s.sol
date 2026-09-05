@@ -67,16 +67,19 @@ contract TestExecutionGuard is Script {
             buildAttestation(intentHash, bytes32(0), deployer, deployer, expiry);
 
         vm.startBroadcast(pk);
-        guard.execute(deployer, 0, "", attestation, signIntent(pk, intentHash));
+        guard.execute(deployer, 0, "", attestation, signAttestation(guard, pk, attestation));
         vm.stopBroadcast();
 
         console.log("ExecutionGuard.execute() called successfully");
     }
 
-    /// @dev Sign an intent hash in the eth_sign format ExecutionGuard checks.
-    function signIntent(uint256 pk, bytes32 intentHash) internal pure returns (bytes memory) {
-        bytes32 signedHash = keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", intentHash));
-        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, signedHash);
+    /// @dev Sign an attestation as EIP-712 typed data, the way ExecutionGuard verifies it.
+    function signAttestation(ExecutionGuard guard, uint256 pk, RiskAttestationRegistry.RiskAttestation memory a)
+        internal
+        view
+        returns (bytes memory)
+    {
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(pk, guard.hashAttestation(a));
         return abi.encodePacked(r, s, v);
     }
 }

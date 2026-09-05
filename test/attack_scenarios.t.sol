@@ -67,44 +67,7 @@ contract AttackScenarios is GuardHarness {
     // because it was handed the attestation.
     // =====================================================================
 
-    function test_Exploit_DenyIsExecutableAsApprove() public {
-        // The evaluator refuses the action: risk 0.94, decision DENY.
-        (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig) = deniedAttestation();
 
-        // Sanity: submitted honestly, this is blocked.
-        vm.prank(agent);
-        vm.expectRevert("ExecutionGuard: execution denied by ARF");
-        guard.execute(address(target), 0, pingCalldata(), att, sig);
-
-        assertFalse(target.pinged(), "denied action must not have executed");
-
-        // The agent changes one field. It does not touch the signature, the
-        // intent hash, the target, the calldata, or the evaluator address.
-        att.decision = RiskAttestationRegistry.Decision.APPROVE;
-
-        vm.prank(agent);
-        guard.execute(address(target), 0, pingCalldata(), att, sig);
-
-        // The action the evaluator denied has now executed.
-        assertTrue(target.pinged(), "EXPLOIT: denied action executed after flipping decision");
-        assertEq(target.pingCount(), 1);
-    }
-
-    function test_Exploit_RiskScoreIsAttackerControlled() public {
-        // The same hole applied to the audit trail rather than to execution.
-        // riskScore is outside intentHash, so the number recorded on chain is
-        // whatever the caller says it is.
-        (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig) = deniedAttestation();
-
-        att.decision = RiskAttestationRegistry.Decision.APPROVE;
-        att.riskScore = 0; // evaluator said 940
-        att.reversibility = RiskAttestationRegistry.Reversibility.REVERSIBLE;
-
-        vm.prank(agent);
-        guard.execute(address(target), 0, pingCalldata(), att, sig);
-
-        assertTrue(target.pinged(), "EXPLOIT: executed with a fabricated risk score");
-    }
 
     function test_Regression_DenyCannotBeExecutedAsApprove() public {
         (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig) = deniedAttestation();
@@ -157,50 +120,7 @@ contract AttackScenarios is GuardHarness {
     // permanently. Fail-closed becomes a denial-of-service primitive.
     // =====================================================================
 
-    function test_Exploit_ThirdPartyCanPermanentlyBlockAnExecution() public {
-        (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig) = approvedAttestation();
 
-        // The attacker needs no signature and no relationship to the agent.
-        // A struct carrying the victim's intent hash is enough; every other
-        // field can be junk.
-        //
-        // Build it field by field. `memory` struct assignment in Solidity is a
-        // reference, not a copy, so `junk = att` followed by `junk.agent = ...`
-        // would silently rewrite the victim's attestation instead of forging a
-        // separate one — and the test would then fail with "agent inactive",
-        // looking like the exploit had been prevented.
-        RiskAttestationRegistry.RiskAttestation memory junk = forgedCopyOf(att, attacker);
-
-        vm.prank(attacker);
-        attestationRegistry.recordAttestation(junk);
-
-        assertTrue(attestationRegistry.isAttestationUsed(att.intentHash), "attacker consumed the intent hash");
-
-        // The agent's valid, signed, unexpired, in-policy approval is now dead.
-        vm.prank(agent);
-        vm.expectRevert("ExecutionGuard: attestation already used");
-        guard.execute(address(target), 0, pingCalldata(), att, sig);
-
-        assertFalse(target.pinged(), "EXPLOIT: legitimate approved action was blocked by a third party");
-    }
-
-    function test_Exploit_ThirdPartyCanForgeAuditEvents() public {
-        // The same unrestricted entry point writes the on-chain audit trail.
-        RiskAttestationRegistry.RiskAttestation memory forged;
-        forged.intentHash = keccak256("never-evaluated-by-anyone");
-        forged.agent = address(0xDECAF);
-        forged.evaluator = attacker;
-        forged.riskScore = 1;
-        forged.decision = RiskAttestationRegistry.Decision.APPROVE;
-
-        vm.expectEmit(true, true, false, true, address(attestationRegistry));
-        emit RiskAttestationRegistry.AttestationIssued(
-            forged.intentHash, forged.agent, forged.riskScore, forged.decision
-        );
-
-        vm.prank(attacker);
-        attestationRegistry.recordAttestation(forged);
-    }
 
     function test_Regression_OnlyGuardCanRecordAttestations() public {
         (RiskAttestationRegistry.RiskAttestation memory att,) = approvedAttestation();

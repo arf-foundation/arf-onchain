@@ -60,6 +60,11 @@ contract RiskAttestationRegistry is Ownable {
     /// @dev Tracks consumed attestations to prevent replay attacks.
     mapping(bytes32 => bool) public usedAttestations;
 
+    /// @dev The only address permitted to consume attestations. Set after
+    ///      deployment, because the guard needs this registry's address in its
+    ///      own constructor.
+    address public executionGuard;
+
     // ------------------------------------------------------------------------
     // Events
     // ------------------------------------------------------------------------
@@ -70,6 +75,8 @@ contract RiskAttestationRegistry is Ownable {
         uint16 riskScore,
         Decision decision
     );
+
+    event ExecutionGuardSet(address indexed guard);
 
     // ------------------------------------------------------------------------
     // Constructor
@@ -82,19 +89,35 @@ contract RiskAttestationRegistry is Ownable {
     // ------------------------------------------------------------------------
 
     /**
-     * @dev Records a governance attestation.
+     * @dev Sets the ExecutionGuard permitted to consume attestations.
      *
-     * This function is called by ExecutionGuard after validating the attestation.
-     * The call marks the attestation as used, preventing replays.
+     * The guard's constructor takes this registry's address, so the guard does
+     * not exist yet when this contract is deployed. Deployment scripts must
+     * call this immediately afterwards — until they do, `recordAttestation`
+     * reverts and no execution can complete.
+     */
+    function setExecutionGuard(address guard) external onlyOwner {
+        require(guard != address(0), "RiskAttestationRegistry: zero guard");
+        executionGuard = guard;
+        emit ExecutionGuardSet(guard);
+    }
+
+    /**
+     * @dev Records a governance attestation, marking it consumed.
      *
-     * NOTE: This function is intentionally NOT restricted to `onlyOwner`.
-     *       The attestation itself is cryptographically bound to the transaction
-     *       and verified by ExecutionGuard. Removing the owner check allows
-     *       ExecutionGuard to call it directly.
+     * Restricted to `ExecutionGuard`. It previously was not, with a comment
+     * claiming that the attestation's cryptographic binding made a caller check
+     * unnecessary. It did not: `intentHash` is derivable from public state, so
+     * any address could consume a victim's intent hash before they used it and
+     * permanently block a legitimate, signed, in-policy approval — turning
+     * fail-closed into a denial-of-service primitive. The same open entry point
+     * also let anyone emit `AttestationIssued` for an agent and decision that
+     * were never evaluated, making the on-chain audit trail forgeable.
      *
      * @param attestation The governance attestation to record.
      */
     function recordAttestation(RiskAttestation calldata attestation) external {
+        require(msg.sender == executionGuard, "RiskAttestationRegistry: not the guard");
         bytes32 id = attestation.intentHash;
         require(!usedAttestations[id], "RiskAttestationRegistry: already used");
         usedAttestations[id] = true;

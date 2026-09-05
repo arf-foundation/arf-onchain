@@ -15,18 +15,21 @@
 > and part of what is built does not yet work as described.
 >
 > **Built:** six Solidity contracts, deployed to Monad testnet. Registration and
-> deployment scripts. Partial tests for `AgentRegistry`.
+> deployment scripts. A 37-test suite covering `ExecutionGuard`, `AgentRegistry`
+> and the adversarial cases.
 >
 > **Not built:** the reference decision engine, the governance API, the demo
-> agent, the indexer, the frontend, the threat model, the attack/invariant test
-> suites, and CI.
+> agent, the indexer, the frontend, the threat model, a stateful invariant
+> suite, and CI.
 >
-> **Known to be broken:** the evaluator signature does not cover the governance
-> decision, so a caller can change `APPROVE`/`ESCALATE`/`DENY` on a validly
-> signed attestation. Read [Known Limitations](#known-limitations) before
-> treating anything below as an enforced guarantee.
+> **Recently fixed in source, not yet redeployed:** the evaluator signature
+> now covers the whole attestation as EIP-712 typed data, and
+> `recordAttestation` is restricted to the guard. **The contracts deployed at
+> the addresses in [`docs/deployments.md`](docs/deployments.md) predate both
+> fixes and remain exploitable.** Read [Known Limitations](#known-limitations)
+> for what is still open.
 >
-> Do not use this to secure funds.
+> Nothing here has been independently audited. Do not use this to secure funds.
 
 ARF Onchain is a governance and execution-control layer for autonomous AI agents operating on-chain.
 
@@ -376,10 +379,10 @@ Instead, it independently verifies:
 5. Whether the authorization is still valid.
 6. Whether the authorization has already been consumed.
 
-This is the intended design. **In the current implementation, items 3 and 4 are
-not actually verified** — the model hash, risk score and decision are supplied by
-the caller and are not covered by the evaluator's signature. See
-[Known Limitations](#known-limitations).
+All six are verified in the current source: items 3 and 4 became real with the
+EIP-712 change, which brings the model hash, risk score, reversibility and
+decision under the evaluator's signature. The **deployed** contracts still
+predate that change. See [Known Limitations](#known-limitations).
 
 ---
 
@@ -430,13 +433,15 @@ An attacker cannot simply capture a valid authorization and substitute a differe
 
 # Security Properties — Target Invariants
 
-> **These are design goals, not verified properties.** They are the invariants
-> the protocol is being built toward. They are **not** currently established by
-> tests, and at least three of them do not hold in the current implementation
-> (see [Known Limitations](#known-limitations) below). Do not cite this list as
-> evidence of the protocol's security.
+> **Partially established.** Several of these are now covered by tests in
+> [`test/attack_scenarios.t.sol`](test/attack_scenarios.t.sol) and
+> [`test/ExecutionGuard.t.sol`](test/ExecutionGuard.t.sol) — including the three
+> that were outright false before the EIP-712 fix. Exposure limits are still not
+> enforced, and nothing here has been independently audited, so this remains a
+> statement of intent backed by the author's own tests rather than a security
+> guarantee. See [Known Limitations](#known-limitations).
 
-The protocol is being designed around the following intended invariants:
+The protocol is designed around the following invariants:
 
 ```text
 APPROVE is required for autonomous execution.
@@ -466,24 +471,35 @@ The following are known gaps between the design above and the current code.
 They are listed here rather than in a separate document so that no reader
 mistakes intent for implementation.
 
-**1. The evaluator signature does not cover the governance decision.**
+**1. ~~The evaluator signature does not cover the governance decision.~~ FIXED
+in source — deployed contracts still affected.**
 
-`ExecutionGuard` verifies a signature over `attestation.intentHash` alone, and
-`intentHash` binds only `(agent, target, value, data, policyHash, chainId,
-expiry, nonce)`. The `decision`, `riskScore`, `reversibility` and `modelHash`
-fields arrive as unauthenticated calldata. A caller holding a signed
-attestation can therefore submit it with a different `decision`. This means
-the invariants _"DENY cannot be converted into execution"_, _"ESCALATE cannot
-bypass human approval"_ and _"APPROVE is required for autonomous execution"_
-**do not currently hold**. The fix is to sign the full attestation as EIP-712
-typed data.
+`ExecutionGuard` now verifies an EIP-712 signature over the entire
+`RiskAttestation` struct, so `decision`, `riskScore`, `reversibility` and
+`modelHash` are all bound. Mutating any field invalidates the signature; the
+EIP-712 domain additionally binds an attestation to this chain and to a specific
+guard deployment. The canonical encoding lives in
+[`contracts/AttestationLib.sol`](contracts/AttestationLib.sol), and
+`ExecutionGuard.hashAttestation()` exposes the digest so off-chain signers can
+confirm they produce the same one.
 
-**2. `RiskAttestationRegistry.recordAttestation` has no caller restriction.**
+Covered by `test_Regression_DenyCannotBeExecutedAsApprove`,
+`test_Regression_EscalateCannotBeExecutedAsApprove`,
+`test_Regression_RiskScoreCannotBeFabricated`,
+`test_MutatingAnyAttestationFieldInvalidatesTheSignature` and
+`test_SignatureDoesNotTransferToAnotherGuardDeployment`.
 
-Any address can mark an `intentHash` as consumed, permanently preventing a
-legitimate execution, and any address can emit `AttestationIssued` events.
-Replay protection and the on-chain audit trail are both writable by third
-parties.
+**2. ~~`RiskAttestationRegistry.recordAttestation` has no caller
+restriction.~~ FIXED in source — deployed contracts still affected.**
+
+Only the bound `ExecutionGuard` may consume an attestation or emit
+`AttestationIssued`. The binding is set by the owner after deployment via
+`setExecutionGuard`, because the guard's constructor needs the registry's
+address; until it is set, execution fails closed.
+
+Covered by `test_Regression_OnlyGuardCanRecordAttestations`,
+`test_Regression_PreRecordingDoesNotBlockLegitimateExecution` and
+`test_ExecutionFailsClosedIfRegistryHasNoGuard`.
 
 **3. Exposure limits are not enforced.**
 
@@ -496,8 +512,10 @@ vacuous for the ERC-20 flows the demo describes. `dailyLimit` is stored in
 function checks the caller's own balance while being `onlyOwner`, so deposits
 from any other address are unrecoverable.
 
-**5. `ExecutionGuard` has no meaningful test coverage.** See
-[Run the Test Suite](#run-the-test-suite).
+**5. Neither the contracts nor the fixes above have been independently
+audited.** The test suite is written by the same people who wrote the
+contracts, and passing tests are evidence about the cases someone thought to
+write, not a security review.
 
 ---
 
@@ -597,15 +615,25 @@ Compiler run successful
 forge test -vv
 ```
 
-**Current coverage is minimal, and the security boundary is untested.**
-`AgentRegistry.t.sol` covers registration, deactivation and nonce handling.
-`ExecutionGuard.t.sol` is a placeholder: its single test asserts only that the
-contract deployed to a non-zero address. There is no test that exercises
-`execute()`, and therefore no test behind any of the
-[target invariants](#security-properties--target-invariants).
+37 tests across three files:
 
-An attack/invariant suite is planned (see the [Roadmap](#roadmap)); it does not
-exist yet. Treat the contracts as unreviewed.
+- `test/Harness.sol` — shared setup and EIP-712 signing helpers.
+- `test/ExecutionGuard.t.sol` — the checks in `execute()`: decisions, identity,
+  caller authorization, evaluator trust and rotation, signature validity,
+  EIP-712 field binding and domain separation, expiry, replay, intent binding,
+  policy state, and registry binding.
+- `test/attack_scenarios.t.sol` — the adversarial regressions for the two fixed
+  flaws.
+
+Two tests document current behavior rather than assert desired behavior:
+`test_PerTransactionLimitIsUnreachableForZeroValueCalls` and
+`test_DailyLimitIsStoredButNeverEnforced`. They exist so
+[Known Limitations](#known-limitations) item 3 is visible in the suite and not
+only in prose.
+
+A stateful invariant suite is still planned (see the [Roadmap](#roadmap)).
+Passing tests are evidence about the cases someone thought to write; treat the
+contracts as unreviewed until they are audited.
 
 ---
 
@@ -978,14 +1006,14 @@ The contracts are written and deployed; they are not yet correct or tested.
 This phase closes the gaps in [Known Limitations](#known-limitations) and must
 land before the protocol is presented as a security artifact.
 
-- [ ] EIP-712 signing over the full attestation, so the decision is bound
-- [ ] Restrict `recordAttestation` to `ExecutionGuard`
+- [x] EIP-712 signing over the full attestation, so the decision is bound
+- [x] Restrict `recordAttestation` to `ExecutionGuard`
 - [ ] Derive `agentId` in `registerAgent` rather than trusting the caller
 - [ ] Enforce (or remove) `maxTransactionValue` and `dailyLimit` for token flows
-- [ ] `ExecutionGuard` test suite, including regressions for the two flaws above
-- [ ] Attack-scenario and invariant test suites
+- [x] `ExecutionGuard` test suite, including regressions for both flaws above
+- [x] Attack-scenario tests — [ ] stateful invariant suite
 - [ ] CI: `forge build` + `forge test` on every push
-- [ ] Redeploy and republish addresses
+- [ ] **Redeploy and republish addresses — the live deployment predates the fixes**
 
 ## Phase 2 — Governance Engine
 
@@ -993,9 +1021,9 @@ land before the protocol is presented as a security artifact.
 - [ ] Policy evaluation
 - [x] Reversibility classification — on-chain enum; classification is off-chain
 - [x] APPROVE / ESCALATE / DENY — enum and branch logic in `ExecutionGuard`
-- [ ] Signed attestations — signature does not yet cover the decision
-- [ ] Intent binding — partial; `modelHash` and `decision` are unbound
-- [x] Replay protection — present, but the registry write is unrestricted
+- [x] Signed attestations — EIP-712 over the full struct
+- [x] Intent binding — every attestation field is now covered by the signature
+- [x] Replay protection — guard-only consumption
 
 ## Phase 3 — Autonomous Agent
 
