@@ -19,7 +19,7 @@ contract RegisterAgentCorrect is Script {
         address agentOwner = deployer;
 
         // Check if already registered
-        (address wallet, , , , bool active, ) = registry.agents(agentId);
+        (address wallet,,,, bool active,) = registry.agents(agentId);
         if (wallet != address(0)) {
             console.log("Agent already exists, skipping registration.");
             console.log("Agent ID:", vm.toString(agentId));
@@ -27,13 +27,7 @@ contract RegisterAgentCorrect is Script {
         }
 
         vm.startBroadcast(deployerPrivateKey);
-        registry.registerAgent(
-            agentId,
-            agentWallet,
-            agentOwner,
-            10000 ether,
-            50000 ether
-        );
+        registry.registerAgent(agentId, agentWallet, agentOwner, 10000 ether, 50000 ether);
         vm.stopBroadcast();
 
         console.log("Agent registered with ID:", vm.toString(agentId));

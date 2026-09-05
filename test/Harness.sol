@@ -91,11 +91,14 @@ abstract contract GuardHarness is Test {
     }
 
     /// @dev The intent hash the guard will recompute for this transaction.
-    function intentHashFor(address who, address to, uint256 value, bytes memory data, bytes32 policyHash, uint256 expiry)
-        internal
-        view
-        returns (bytes32)
-    {
+    function intentHashFor(
+        address who,
+        address to,
+        uint256 value,
+        bytes memory data,
+        bytes32 policyHash,
+        uint256 expiry
+    ) internal view returns (bytes32) {
         AgentRegistry.Agent memory a = agentRegistry.getAgent(keccak256(abi.encodePacked(who)));
         return guard.computeIntentHash(who, to, value, data, policyHash, block.chainid, expiry, a.nonce);
     }
@@ -108,11 +111,7 @@ abstract contract GuardHarness is Test {
      * hash — what the guard used to check — is what allowed a signed DENY to be
      * executed as an APPROVE.
      */
-    function signAsEvaluator(RiskAttestationRegistry.RiskAttestation memory att)
-        internal
-        view
-        returns (bytes memory)
-    {
+    function signAsEvaluator(RiskAttestationRegistry.RiskAttestation memory att) internal view returns (bytes memory) {
         (uint8 v, bytes32 r, bytes32 s) = vm.sign(EVALUATOR_PK, guard.hashAttestation(att));
         return abi.encodePacked(r, s, v);
     }

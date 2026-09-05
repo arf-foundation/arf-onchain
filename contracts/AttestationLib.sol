@@ -24,6 +24,9 @@ import {RiskAttestationRegistry} from "./RiskAttestationRegistry.sol";
  */
 library AttestationLib {
     /// @dev The EIP-712 type string. Enums are encoded as `uint8`.
+    ///      Kept one field per line: field order and types are part of the hash,
+    ///      and a reviewer has to be able to check them against the struct.
+    // forgefmt: disable-next-item
     string internal constant ATTESTATION_TYPE = "RiskAttestation("
         "bytes32 intentHash,"
         "bytes32 policyHash,"

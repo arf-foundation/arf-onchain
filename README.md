@@ -2,6 +2,7 @@
 [![Track: Trust, Identity & AI Infrastructure](https://img.shields.io/badge/Track-Trust%2C%20Identity%20%26%20AI%20Infrastructure-00B4D8?style=for-the-badge)](<>)
 [![Week 1 Complete](https://img.shields.io/badge/Week%201-Complete-2ECC40?style=for-the-badge)](<>)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CI](https://github.com/arf-foundation/arf-onchain/actions/workflows/ci.yml/badge.svg)](https://github.com/arf-foundation/arf-onchain/actions/workflows/ci.yml)
 
 # ARF Onchain
 
@@ -19,8 +20,8 @@
 > and the adversarial cases.
 >
 > **Not built:** the reference decision engine, the governance API, the demo
-> agent, the indexer, the frontend, the threat model, a stateful invariant
-> suite, and CI.
+> agent, the indexer, the frontend, the threat model, and a stateful invariant
+> suite.
 >
 > **Recently fixed in source, not yet redeployed:** the evaluator signature
 > now covers the whole attestation as EIP-712 typed data, and
@@ -545,6 +546,10 @@ arf-onchain/
 ├── docs/
 │   └── deployments.md
 │
+├── .github/
+│   └── workflows/
+│       └── ci.yml
+│
 ├── foundry.toml
 └── CONTRIBUTING.md
 ```
@@ -555,8 +560,8 @@ API, the demo agent, the Envio indexer and the frontend — are **planned, not
 present**. So are the threat model and protocol documents. See the
 [Roadmap](#roadmap) for what is actually built.
 
-There is no CI configuration in this repository; nothing is checked
-automatically on push.
+CI runs `forge fmt --check`, `forge build` and `forge test` on every push and
+pull request — see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
 ---
 
@@ -1012,7 +1017,7 @@ land before the protocol is presented as a security artifact.
 - [ ] Enforce (or remove) `maxTransactionValue` and `dailyLimit` for token flows
 - [x] `ExecutionGuard` test suite, including regressions for both flaws above
 - [x] Attack-scenario tests — [ ] stateful invariant suite
-- [ ] CI: `forge build` + `forge test` on every push
+- [x] CI: `forge fmt --check` + `forge build` + `forge test` on every push
 - [ ] **Redeploy and republish addresses — the live deployment predates the fixes**
 
 ## Phase 2 — Governance Engine

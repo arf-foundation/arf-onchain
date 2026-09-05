@@ -58,9 +58,7 @@ contract TestExecutionGuard is Script {
         address deployer = vm.addr(pk);
         uint256 expiry = block.timestamp + 3600;
 
-        bytes32 intentHash = guard.computeIntentHash(
-            deployer, deployer, 0, "", bytes32(0), block.chainid, expiry, 0
-        );
+        bytes32 intentHash = guard.computeIntentHash(deployer, deployer, 0, "", bytes32(0), block.chainid, expiry, 0);
         console.log("Intent Hash:", vm.toString(intentHash));
 
         RiskAttestationRegistry.RiskAttestation memory attestation =

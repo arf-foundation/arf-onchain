@@ -134,11 +134,7 @@ contract ExecutionGuard is Ownable, ReentrancyGuard, EIP712 {
      * the same digest this contract verifies, rather than reimplementing the
      * encoding and hoping it matches.
      */
-    function hashAttestation(RiskAttestationRegistry.RiskAttestation memory attestation)
-        public
-        view
-        returns (bytes32)
-    {
+    function hashAttestation(RiskAttestationRegistry.RiskAttestation memory attestation) public view returns (bytes32) {
         return _hashTypedDataV4(AttestationLib.hashStruct(attestation));
     }
 

@@ -22,7 +22,7 @@ contract RegisterAgent is Script {
             agentWallet,
             agentOwner,
             10000 ether, // max tx: 10,000 MON
-            50000 ether  // daily limit: 50,000 MON
+            50000 ether // daily limit: 50,000 MON
         );
 
         console.log("Agent registered with ID:", vm.toString(agentId));

@@ -32,8 +32,16 @@ contract RiskAttestationRegistry is Ownable {
     // Enums
     // ------------------------------------------------------------------------
 
-    enum Decision { APPROVE, ESCALATE, DENY }
-    enum Reversibility { REVERSIBLE, COMPENSABLE, IRREVERSIBLE }
+    enum Decision {
+        APPROVE,
+        ESCALATE,
+        DENY
+    }
+    enum Reversibility {
+        REVERSIBLE,
+        COMPENSABLE,
+        IRREVERSIBLE
+    }
 
     // ------------------------------------------------------------------------
     // Structs
@@ -43,7 +51,7 @@ contract RiskAttestationRegistry is Ownable {
         bytes32 intentHash;
         bytes32 policyHash;
         bytes32 modelHash;
-        uint16 riskScore;          // 0–1000 (0 = safe, 1000 = dangerous)
+        uint16 riskScore; // 0–1000 (0 = safe, 1000 = dangerous)
         Reversibility reversibility;
         Decision decision;
         address agent;
@@ -69,12 +77,7 @@ contract RiskAttestationRegistry is Ownable {
     // Events
     // ------------------------------------------------------------------------
 
-    event AttestationIssued(
-        bytes32 indexed intentHash,
-        address indexed agent,
-        uint16 riskScore,
-        Decision decision
-    );
+    event AttestationIssued(bytes32 indexed intentHash, address indexed agent, uint16 riskScore, Decision decision);
 
     event ExecutionGuardSet(address indexed guard);
 

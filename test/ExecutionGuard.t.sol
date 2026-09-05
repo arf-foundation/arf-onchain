@@ -227,8 +227,7 @@ contract ExecutionGuardTest is GuardHarness {
             new ExecutionGuard(address(agentRegistry), address(policyRegistry), address(fresh), evaluator);
 
         uint256 expiry = block.timestamp + VALID_FOR;
-        bytes32 intentHash =
-            unbound.computeIntentHash(
+        bytes32 intentHash = unbound.computeIntentHash(
             agent, address(target), 0, pingCalldata(), bytes32(0), block.chainid, block.timestamp + VALID_FOR, 0
         );
 

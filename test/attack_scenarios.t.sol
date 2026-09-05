@@ -67,8 +67,6 @@ contract AttackScenarios is GuardHarness {
     // because it was handed the attestation.
     // =====================================================================
 
-
-
     function test_Regression_DenyCannotBeExecutedAsApprove() public {
         (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig) = deniedAttestation();
 
@@ -119,8 +117,6 @@ contract AttackScenarios is GuardHarness {
     // and the guard's replay check then rejects the legitimate execution
     // permanently. Fail-closed becomes a denial-of-service primitive.
     // =====================================================================
-
-
 
     function test_Regression_OnlyGuardCanRecordAttestations() public {
         (RiskAttestationRegistry.RiskAttestation memory att,) = approvedAttestation();
