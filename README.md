@@ -1,6 +1,6 @@
 [![Monad Metropolis](https://img.shields.io/badge/Monad-Metropolis-6A5ACD?style=for-the-badge)](https://hackathon.monad.xyz/)
-[![Track: Trust, Identity & AI Infrastructure](https://img.shields.io/badge/Track-Trust%2C%20Identity%20%26%20AI%20Infrastructure-00B4D8?style=for-the-badge)]()
-[![Week 1 Complete](https://img.shields.io/badge/Week%201-Complete-2ECC40?style=for-the-badge)]()
+[![Track: Trust, Identity & AI Infrastructure](https://img.shields.io/badge/Track-Trust%2C%20Identity%20%26%20AI%20Infrastructure-00B4D8?style=for-the-badge)](<>)
+[![Week 1 Complete](https://img.shields.io/badge/Week%201-Complete-2ECC40?style=for-the-badge)](<>)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
 # ARF Onchain
@@ -8,6 +8,25 @@
 ## Autonomous Agent Governance Infrastructure for Monad
 
 > **AI proposes. ARF governs. Cryptography verifies. Monad executes.**
+
+> ### ⚠️ Status: early hackathon protocol — unaudited, with known flaws
+>
+> This README describes the intended architecture. Much of it is not built yet,
+> and part of what is built does not yet work as described.
+>
+> **Built:** six Solidity contracts, deployed to Monad testnet. Registration and
+> deployment scripts. Partial tests for `AgentRegistry`.
+>
+> **Not built:** the reference decision engine, the governance API, the demo
+> agent, the indexer, the frontend, the threat model, the attack/invariant test
+> suites, and CI.
+>
+> **Known to be broken:** the evaluator signature does not cover the governance
+> decision, so a caller can change `APPROVE`/`ESCALATE`/`DENY` on a validly
+> signed attestation. Read [Known Limitations](#known-limitations) before
+> treating anything below as an enforced guarantee.
+>
+> Do not use this to secure funds.
 
 ARF Onchain is a governance and execution-control layer for autonomous AI agents operating on-chain.
 
@@ -150,10 +169,16 @@ ARF produces one of three governance outcomes.
 | Decision   |          Risk | Action                  |
 | ---------- | ------------: | ----------------------- |
 | `APPROVE`  |      `< 0.20` | Autonomous execution    |
-| `ESCALATE` | `0.20 – 0.80` | Human approval required |
-| `DENY`     |      `> 0.80` | Execution blocked       |
+| `ESCALATE` | `0.20 – 0.75` | Human approval required |
+| `DENY`     |      `≥ 0.75` | Execution blocked       |
 
 Risk is evaluated together with policy, identity, exposure, and reversibility.
+
+These boundaries are not arbitrary. They fall out of the ARF engine's expected-loss
+minimization: with a false-approval cost of `10`, a false-denial cost of `8` and a
+human-review cost of `2`, the escalate/deny boundary is
+`1 − (review / false_denial) = 1 − 2/8 = 0.75`, and the approve/escalate boundary is
+`review / false_approval = 2/10 = 0.20`.
 
 ### Reversibility
 
@@ -351,7 +376,10 @@ Instead, it independently verifies:
 5. Whether the authorization is still valid.
 6. Whether the authorization has already been consumed.
 
-This makes the execution boundary independently verifiable.
+This is the intended design. **In the current implementation, items 3 and 4 are
+not actually verified** — the model hash, risk score and decision are supplied by
+the caller and are not covered by the evaluator's signature. See
+[Known Limitations](#known-limitations).
 
 ---
 
@@ -359,7 +387,7 @@ This makes the execution boundary independently verifiable.
 
 A governance decision must correspond to the exact transaction being executed.
 
-The intent is cryptographically bound to transaction-specific data such as:
+The intent is cryptographically bound to transaction-specific data:
 
 ```text
 Agent
@@ -368,10 +396,15 @@ Value
 Calldata
 Nonce
 Policy hash
-Model hash
 Chain ID
 Expiration
 ```
+
+> **Currently incomplete.** `modelHash`, `riskScore`, `reversibility` and — most
+> importantly — `decision` are **not** part of `intentHash` and are not otherwise
+> covered by the evaluator's signature. The binding below therefore holds for
+> the transaction's _shape_ but not for the governance _verdict_ attached to it.
+> See [Known Limitations](#known-limitations).
 
 The resulting:
 
@@ -395,9 +428,15 @@ An attacker cannot simply capture a valid authorization and substitute a differe
 
 ---
 
-# Security Properties
+# Security Properties — Target Invariants
 
-The protocol is designed around the following invariants:
+> **These are design goals, not verified properties.** They are the invariants
+> the protocol is being built toward. They are **not** currently established by
+> tests, and at least three of them do not hold in the current implementation
+> (see [Known Limitations](#known-limitations) below). Do not cite this list as
+> evidence of the protocol's security.
+
+The protocol is being designed around the following intended invariants:
 
 ```text
 APPROVE is required for autonomous execution.
@@ -421,7 +460,44 @@ DENY cannot be converted into execution.
 ESCALATE cannot bypass human approval.
 ```
 
-See [`SECURITY.md`](SECURITY.md) and the invariant/attack tests under [`test/`](test/).
+## Known Limitations
+
+The following are known gaps between the design above and the current code.
+They are listed here rather than in a separate document so that no reader
+mistakes intent for implementation.
+
+**1. The evaluator signature does not cover the governance decision.**
+
+`ExecutionGuard` verifies a signature over `attestation.intentHash` alone, and
+`intentHash` binds only `(agent, target, value, data, policyHash, chainId,
+expiry, nonce)`. The `decision`, `riskScore`, `reversibility` and `modelHash`
+fields arrive as unauthenticated calldata. A caller holding a signed
+attestation can therefore submit it with a different `decision`. This means
+the invariants _"DENY cannot be converted into execution"_, _"ESCALATE cannot
+bypass human approval"_ and _"APPROVE is required for autonomous execution"_
+**do not currently hold**. The fix is to sign the full attestation as EIP-712
+typed data.
+
+**2. `RiskAttestationRegistry.recordAttestation` has no caller restriction.**
+
+Any address can mark an `intentHash` as consumed, permanently preventing a
+legitimate execution, and any address can emit `AttestationIssued` events.
+Replay protection and the on-chain audit trail are both writable by third
+parties.
+
+**3. Exposure limits are not enforced.**
+
+`ExecutionGuard` holds no balance, so native-value transfers cannot execute and
+`value` is `0` in practice — which makes the `maxTransactionValue` check
+vacuous for the ERC-20 flows the demo describes. `dailyLimit` is stored in
+`AgentRegistry` and read by nothing.
+
+**4. `TreasuryVault` is not wired into the execution path** and its `withdraw`
+function checks the caller's own balance while being `onlyOwner`, so deposits
+from any other address are unrecoverable.
+
+**5. `ExecutionGuard` has no meaningful test coverage.** See
+[Run the Test Suite](#run-the-test-suite).
 
 ---
 
@@ -440,47 +516,29 @@ arf-onchain/
 │
 ├── script/
 │   ├── Deploy.s.sol
-│   ├── RegisterAgent.s.sol
-│   └── DemoScenario.s.sol
+│   ├── RegisterAgent.s.sol          # superseded — see RegisterAgentCorrect
+│   ├── RegisterAgentCorrect.s.sol
+│   └── TestExecutionGuard.s.sol
 │
 ├── test/
 │   ├── AgentRegistry.t.sol
-│   ├── PolicyRegistry.t.sol
-│   ├── RiskAttestationRegistry.t.sol
-│   ├── ExecutionGuard.t.sol
-│   ├── TreasuryVault.t.sol
-│   ├── AuditRegistry.t.sol
-│   ├── attack_scenarios.t.sol
-│   └── invariant.t.sol
-│
-├── engine/
-│   └── src/
-│       └── arf_reference/
-│
-├── api/
-│   └── src/
-│       └── arf_api/
-│
-├── agent/
-│   └── src/
-│       └── treasury_agent/
-│
-├── indexer/
-│   └── envio/
-│
-├── frontend/
+│   └── ExecutionGuard.t.sol         # placeholder — see Run the Test Suite
 │
 ├── docs/
-│   ├── threat-model.md
-│   ├── protocol.md
-│   ├── decisions.md
-│   ├── identity.md
-│   ├── risk-attestation.md
-│   └── demo.md
+│   └── deployments.md
 │
-└── .github/
-    └── workflows/
+├── foundry.toml
+└── CONTRIBUTING.md
 ```
+
+That is the whole repository. The off-chain components described in the
+architecture sections above — the reference decision engine, the governance
+API, the demo agent, the Envio indexer and the frontend — are **planned, not
+present**. So are the threat model and protocol documents. See the
+[Roadmap](#roadmap) for what is actually built.
+
+There is no CI configuration in this repository; nothing is checked
+automatically on push.
 
 ---
 
@@ -539,12 +597,15 @@ Compiler run successful
 forge test -vv
 ```
 
-Run the security/invariant suite:
+**Current coverage is minimal, and the security boundary is untested.**
+`AgentRegistry.t.sol` covers registration, deactivation and nonce handling.
+`ExecutionGuard.t.sol` is a placeholder: its single test asserts only that the
+contract deployed to a non-zero address. There is no test that exercises
+`execute()`, and therefore no test behind any of the
+[target invariants](#security-properties--target-invariants).
 
-```bash
-forge test --match-path test/attack_scenarios.t.sol -vv
-forge test --match-path test/invariant.t.sol -vv
-```
+An attack/invariant suite is planned (see the [Roadmap](#roadmap)); it does not
+exist yet. Treat the contracts as unreviewed.
 
 ---
 
@@ -645,66 +706,19 @@ Active/inactive status
 
 ---
 
-# Run the Reference Decision Engine
+# Off-Chain Components — Planned
 
-The public repository contains a lightweight reference implementation of the governance interface.
+The reference decision engine, the governance API and the demo treasury agent
+described in the architecture sections above are **not in this repository yet.**
+There is no `engine/`, `api/` or `agent/` package to install, and the commands
+that previously appeared here (`pip install -e ./engine`, `uvicorn
+arf_api.main:app`, `python -m treasury_agent.main`) did not correspond to
+anything shipped.
 
-Create the Python environment:
+What exists today is the on-chain layer: six contracts, two test files, the
+deployment and registration scripts, and the Monad testnet deployment.
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-```
-
-Install:
-
-```bash
-pip install -e ./engine
-```
-
-Run tests:
-
-```bash
-pytest engine/tests -v
-```
-
-The reference implementation is intentionally separated from ARF's proprietary production engine.
-
----
-
-# Run the API
-
-Install API dependencies:
-
-```bash
-pip install -e ./api
-```
-
-Start the service:
-
-```bash
-uvicorn arf_api.main:app --reload
-```
-
-The API accepts agent intents and returns governance decisions/attestations through the same conceptual interface used by the production ARF architecture.
-
----
-
-# Run the Autonomous Agent
-
-Install the agent package:
-
-```bash
-pip install -e ./agent
-```
-
-Run:
-
-```bash
-python -m treasury_agent.main
-```
-
-The demo agent follows:
+The intended off-chain shape is unchanged, and the agent loop it implements is:
 
 ```text
 Observe
@@ -720,11 +734,18 @@ Approve / Escalate / Deny
 Execute only when authorized
 ```
 
+See the [Roadmap](#roadmap) for sequencing. The production ARF decision engine
+is proprietary and separate from anything planned here; see
+[Public vs. Proprietary Components](#public-vs-proprietary-components).
+
 ---
 
-# Demo
+# Demo — Planned Scenario
 
-The canonical demo contains three transactions.
+The canonical demo contains three transactions. **It is not yet runnable**: it
+needs the off-chain evaluator that produces signed attestations, which is not in
+this repository. The risk scores below are illustrative values chosen to land in
+each decision band, not output from the ARF engine.
 
 ## 1. Safe
 
@@ -943,23 +964,38 @@ Every consequential decision should be reconstructable from its intent, policy, 
 ## Phase 1 — Protocol Foundation
 
 - [x] Repository structure
-- [ ] AgentRegistry
-- [ ] PolicyRegistry
-- [ ] RiskAttestationRegistry
-- [ ] ExecutionGuard
-- [ ] TreasuryVault
-- [ ] AuditRegistry
-- [ ] Monad Testnet deployment
+- [x] AgentRegistry
+- [x] PolicyRegistry
+- [x] RiskAttestationRegistry
+- [x] ExecutionGuard
+- [x] TreasuryVault — deployed, not yet wired into the execution path
+- [x] AuditRegistry
+- [x] Monad Testnet deployment
+
+## Phase 1b — Correctness and Coverage
+
+The contracts are written and deployed; they are not yet correct or tested.
+This phase closes the gaps in [Known Limitations](#known-limitations) and must
+land before the protocol is presented as a security artifact.
+
+- [ ] EIP-712 signing over the full attestation, so the decision is bound
+- [ ] Restrict `recordAttestation` to `ExecutionGuard`
+- [ ] Derive `agentId` in `registerAgent` rather than trusting the caller
+- [ ] Enforce (or remove) `maxTransactionValue` and `dailyLimit` for token flows
+- [ ] `ExecutionGuard` test suite, including regressions for the two flaws above
+- [ ] Attack-scenario and invariant test suites
+- [ ] CI: `forge build` + `forge test` on every push
+- [ ] Redeploy and republish addresses
 
 ## Phase 2 — Governance Engine
 
 - [ ] Reference risk evaluator
 - [ ] Policy evaluation
-- [ ] Reversibility classification
-- [ ] APPROVE / ESCALATE / DENY
-- [ ] Signed attestations
-- [ ] Intent binding
-- [ ] Replay protection
+- [x] Reversibility classification — on-chain enum; classification is off-chain
+- [x] APPROVE / ESCALATE / DENY — enum and branch logic in `ExecutionGuard`
+- [ ] Signed attestations — signature does not yet cover the decision
+- [ ] Intent binding — partial; `modelHash` and `decision` are unbound
+- [x] Replay protection — present, but the registry write is unrestricted
 
 ## Phase 3 — Autonomous Agent
 
@@ -987,18 +1023,22 @@ Every consequential decision should be reconstructable from its intent, policy, 
 
 # Security
 
-This project is being developed as a hackathon protocol and should be treated accordingly.
+**This is an unaudited hackathon protocol with known, documented security flaws.**
 
-Do not use the current implementation to secure production funds without an independent security review.
+Do not use it to hold or move funds of any kind. The Monad testnet deployment
+exists to demonstrate the architecture; it is not a safe reference
+implementation, and the addresses in [`docs/deployments.md`](docs/deployments.md)
+should be treated as a demo, not a target.
 
-See:
+Read [Known Limitations](#known-limitations) before drawing any conclusion about
+what this protocol enforces. In particular, the evaluator signature does not
+currently bind the governance decision, so the execution boundary can be
+bypassed by the caller.
 
-- [`SECURITY.md`](SECURITY.md)
-- [`docs/threat-model.md`](docs/threat-model.md)
-- [`test/attack_scenarios.t.sol`](test/attack_scenarios.t.sol)
-- [`test/invariant.t.sol`](test/invariant.t.sol)
-
-Security reports should not be disclosed publicly before the maintainers have had an opportunity to investigate.
+A threat model and a formal security policy are planned but not yet written.
+Until then, report anything you find by opening an issue or contacting the
+maintainers directly. Please give the maintainers an opportunity to investigate
+before disclosing publicly.
 
 ---
 
@@ -1020,17 +1060,17 @@ Security reports should not be disclosed publicly before the maintainers have ha
 
 I'm building this for the **Monad Metropolis Hackathon** and actively recruiting:
 
-| Role | Skills | What You'll Do |
-|------|--------|----------------|
-| **Backend/Systems Engineer** | Rust, Go, Python | Build the API layer, integrate with Monad, optimize performance |
-| **AI/ML Engineer** | Python, Bayesian inference, LLMs | Enhance the reference risk engine, integrate with Qwen |
-| **Frontend Developer** | React, Next.js, TypeScript | Build the governance dashboard and decision explorer |
-| **DevRel/Community** | Technical writing, Discord/Twitter | Help with docs, demos, and hackathon visibility |
+| Role                         | Skills                             | What You'll Do                                                  |
+| ---------------------------- | ---------------------------------- | --------------------------------------------------------------- |
+| **Backend/Systems Engineer** | Rust, Go, Python                   | Build the API layer, integrate with Monad, optimize performance |
+| **AI/ML Engineer**           | Python, Bayesian inference, LLMs   | Enhance the reference risk engine, integrate with Qwen          |
+| **Frontend Developer**       | React, Next.js, TypeScript         | Build the governance dashboard and decision explorer            |
+| **DevRel/Community**         | Technical writing, Discord/Twitter | Help with docs, demos, and hackathon visibility                 |
 
 **Why join ARF Onchain?**
 
 - Work on a real governance infrastructure project that solves a critical problem in autonomous AI.
-- Existing repo with tests passing, contracts deployed, and a clear Week 2 plan.
+- Contracts written and deployed to Monad testnet, with an honest, documented list of what still needs fixing — see [Known Limitations](#known-limitations). There is real, well-scoped work here.
 - Built on Monad – high-throughput, low-latency execution.
 - Strong prize potential: $30K track prize + multiple bounties.
 
