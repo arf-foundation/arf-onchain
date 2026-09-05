@@ -1,0 +1,67 @@
+name: CI
+
+# Runs on every push and pull request. Before this workflow existed nothing was
+# checked automatically — `forge build` was broken on `main` for days without
+# anything noticing, and the ExecutionGuard tests only ran when someone
+# remembered to run them.
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FOUNDRY_PROFILE: default
+
+jobs:
+  build-and-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          # fetch-depth: 0 is required, not incidental. The pinned
+          # openzeppelin-contracts commit (v5.0.0) is not reachable at depth 1,
+          # so a shallow checkout fails with "Unable to find current revision in
+          # submodule path 'lib/openzeppelin-contracts'".
+          fetch-depth: 0
+
+      - name: Install Foundry
+        uses: foundry-rs/foundry-toolchain@v1
+        with:
+          version: stable
+
+      - name: Show versions
+        run: |
+          forge --version
+          echo "solc: $(grep solc_version foundry.toml)"
+
+      - name: Check formatting
+        run: forge fmt --check
+
+      - name: Build
+        run: forge build --sizes
+
+      - name: Test
+        run: forge test -vvv
+
+      # Coverage is reported, not gated. A threshold on a suite this young
+      # would mostly measure how many lines the tests happen to touch, and the
+      # gap that mattered here was semantic — the security boundary had a test
+      # file, it just never called execute().
+      - name: Coverage summary
+        if: always()
+        continue-on-error: true
+        run: forge coverage --report summary
