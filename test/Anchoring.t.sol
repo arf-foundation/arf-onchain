@@ -262,9 +262,15 @@ contract AnchoringTest is GuardHarness {
             rationaleHash: keccak256("provider read failed")
         });
 
+        // Signed before arming expectRevert: signAsEvaluator calls
+        // guard.hashAttestation, a view call. Signing inline as a call
+        // argument evaluates that call first and expectRevert intercepts it
+        // instead of execute() -- exactly the failure mode this fixes.
+        bytes memory sig = signAsEvaluator(att);
+
         vm.prank(agent);
         vm.expectRevert("ExecutionGuard: cannot approve an unclassified action");
-        guard.execute(address(target), 0, pingCalldata(), att, signAsEvaluator(att));
+        guard.execute(address(target), 0, pingCalldata(), att, sig);
 
         assertFalse(target.pinged());
     }
