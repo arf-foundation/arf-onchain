@@ -73,8 +73,8 @@ abstract contract GuardHarness is Test {
         attestationRegistry.setExecutionGuard(address(guard));
         target = new CallTarget();
 
-        agentId = keccak256(abi.encodePacked(agent));
-        agentRegistry.registerAgent(agentId, agent, agent, MAX_TX, DAILY_LIMIT);
+        agentId = agentRegistry.registerAgent(agent, agent, MAX_TX, DAILY_LIMIT);
+        assertEq(agentId, agentRegistry.agentIdFor(agent), "registry derived an id the guard will not look up");
 
         // Timestamps start at 1 in Foundry; move forward so expiry arithmetic
         // below cannot underflow.
