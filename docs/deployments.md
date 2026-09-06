@@ -44,9 +44,16 @@ address owner, uint256, uint256)`; it now takes
 
 **Network:** Monad Testnet
 **Chain ID:** 10143 (`0x279f`)
-**Deployer / owner:** `0xaa160C367632CAbcF46d6F7e423b56c71C8B4841`
+**Current deployed owner:** `0xaa160C367632CAbcF46d6F7e423b56c71C8B4841`
 **Addresses documented:** 2026-09-04
 **On-chain state last verified:** 2026-09-04
+
+## Deployment status (2026-09-06)
+
+**Pending redeploy.** The fixes in this repository are ready to deploy. A new
+deployer (`0x444F1f04451b4216854e1241228E999020b0D0d5`) has been generated for
+testnet. Deployment awaits funding the new deployer address with testnet MON,
+then running `forge script script/Deploy.s.sol --broadcast`.
 
 ## Contracts
 
