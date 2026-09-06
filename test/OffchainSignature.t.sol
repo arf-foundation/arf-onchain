@@ -60,10 +60,8 @@ contract OffchainSignatureTest is Test {
     bytes32 internal constant PINNED_DIGEST = 0x968f23c17134eb9fc6da3357b2b8d3587e4967b57dbae2b342cbd0573960b412;
 
     /// @dev Produced by the Python signer for PINNED_DIGEST.
-    bytes internal constant PINNED_SIGNATURE =
-        hex"633cf1ce0bfea89ebdf06c5e670017633c136e1294b2a7d808d70c5d128f8705"
-        hex"487fb3f035b3c426bbb13d84586f96f9a0f105e843feef5fb9b856ea0ea6c8db"
-        hex"1c";
+    bytes internal constant PINNED_SIGNATURE = hex"633cf1ce0bfea89ebdf06c5e670017633c136e1294b2a7d808d70c5d128f8705"
+        hex"487fb3f035b3c426bbb13d84586f96f9a0f105e843feef5fb9b856ea0ea6c8db" hex"1c";
 
     ExecutionGuard internal guard;
 

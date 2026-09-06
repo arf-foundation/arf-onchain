@@ -14,10 +14,7 @@ import {ECDSA} from "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
  * both anchoring and execution.
  */
 interface IExecutionGuardDigest {
-    function hashAttestation(RiskAttestationRegistry.RiskAttestation memory attestation)
-        external
-        view
-        returns (bytes32);
+    function hashAttestation(RiskAttestationRegistry.RiskAttestation memory attestation) external view returns (bytes32);
 
     function trustedEvaluator() external view returns (address);
 }
