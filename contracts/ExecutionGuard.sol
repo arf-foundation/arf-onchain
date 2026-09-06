@@ -35,9 +35,15 @@ contract ExecutionGuard is Ownable, ReentrancyGuard, EIP712 {
 
     event ExecutionApproved(bytes32 indexed intentHash, address indexed agent, address indexed target, uint256 value);
 
-    event ExecutionDenied(bytes32 indexed intentHash, address indexed agent, uint256 riskScore, string reason);
-
-    event ExecutionEscalated(bytes32 indexed intentHash, address indexed agent, uint256 riskScore);
+    // There are deliberately no ExecutionDenied / ExecutionEscalated events.
+    //
+    // Both verdicts revert, and a reverted transaction produces no logs, so
+    // events emitted on those paths were unobservable — declared, emitted, and
+    // discarded with the rest of the state change. They read like an audit
+    // trail for refusals and were not one.
+    //
+    // Refusals are recorded by `RiskAttestationRegistry.anchorDecision`, in a
+    // transaction that succeeds precisely because it does not execute anything.
 
     constructor(
         address _agentRegistry,
@@ -108,6 +114,18 @@ contract ExecutionGuard is Ownable, ReentrancyGuard, EIP712 {
 
         // 9. Process decision
         if (attestation.decision == RiskAttestationRegistry.Decision.APPROVE) {
+            // An approval that admits it does not know whether the action can
+            // be undone contradicts itself. Off-chain, `Compensation`
+            // collapses an unreadable classification to IRREVERSIBLE before
+            // the decision is taken, so a well-behaved evaluator cannot
+            // produce this pair — which is exactly why the guard should reject
+            // it. Reaching here means the evaluator is compromised or broken,
+            // and this is the security boundary, not a mirror of it.
+            require(
+                attestation.reversibility != RiskAttestationRegistry.Reversibility.UNDETERMINED,
+                "ExecutionGuard: cannot approve an unclassified action"
+            );
+
             require(value <= agent.maxTransactionValue, "ExecutionGuard: exceeds per-tx limit");
 
             attestationRegistry.recordAttestation(attestation);
@@ -117,10 +135,8 @@ contract ExecutionGuard is Ownable, ReentrancyGuard, EIP712 {
 
             emit ExecutionApproved(attestation.intentHash, attestation.agent, target, value);
         } else if (attestation.decision == RiskAttestationRegistry.Decision.ESCALATE) {
-            emit ExecutionEscalated(attestation.intentHash, attestation.agent, attestation.riskScore);
             revert("ExecutionGuard: ESCALATE requires human approval");
         } else if (attestation.decision == RiskAttestationRegistry.Decision.DENY) {
-            emit ExecutionDenied(attestation.intentHash, attestation.agent, attestation.riskScore, "Decision DENY");
             revert("ExecutionGuard: execution denied by ARF");
         } else {
             revert("ExecutionGuard: unknown decision");

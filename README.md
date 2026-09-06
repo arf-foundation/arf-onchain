@@ -23,12 +23,14 @@
 > agent, the indexer, the frontend, the threat model, and a stateful invariant
 > suite.
 >
-> **Recently fixed in source, not yet redeployed:** the evaluator signature
-> now covers the whole attestation as EIP-712 typed data, and
-> `recordAttestation` is restricted to the guard. **The contracts deployed at
-> the addresses in [`docs/deployments.md`](docs/deployments.md) predate both
-> fixes and remain exploitable.** Read [Known Limitations](#known-limitations)
-> for what is still open.
+> **Recently fixed in source, not yet redeployed:** the evaluator signature now
+> covers the whole attestation as EIP-712 typed data; `recordAttestation` is
+> restricted to the guard; `registerAgent` derives the agent id; refusals are
+> recorded on-chain by `anchorDecision`; and an `APPROVE` carrying an
+> `UNDETERMINED` reversibility is rejected. **The contracts deployed at the
+> addresses in [`docs/deployments.md`](docs/deployments.md) predate all of it,
+> remain exploitable, and no longer match this source's ABI.** Read
+> [Known Limitations](#known-limitations) for what is still open.
 >
 > Nothing here has been independently audited. Do not use this to secure funds.
 
@@ -192,9 +194,23 @@ Every governed action is classified as:
 REVERSIBLE
 COMPENSABLE
 IRREVERSIBLE
+UNDETERMINED
 ```
 
 This allows ARF to distinguish between actions that can be safely recovered and actions that create permanent or difficult-to-recover exposure.
+
+`UNDETERMINED` is not a fourth degree of recoverability. It is the absence of a
+reading: the evaluator could not observe enough provider state to classify the
+action. It is refused exactly as harshly as `IRREVERSIBLE` — `ExecutionGuard`
+rejects any `APPROVE` carrying it — and recorded separately because "we could
+not tell" and "we knew it was permanent" are different findings, and only one
+of them indicates a broken evaluator.
+
+Classification is deliberately a reading, not a lookup table. Whether deleting a
+storage volume is recoverable depends on whether the request skips the final
+backup, which is a property of the request and the live resource rather than of
+the verb — so a governance layer that classified by action name would be wrong
+on precisely the case that matters.
 
 ---
 
@@ -509,11 +525,53 @@ Covered by `test_Regression_OnlyGuardCanRecordAttestations`,
 vacuous for the ERC-20 flows the demo describes. `dailyLimit` is stored in
 `AgentRegistry` and read by nothing.
 
-**4. `TreasuryVault` is not wired into the execution path** and its `withdraw`
+**`dailyLimit` is advisory and unenforced.** Enforcing it needs per-agent spend
+accounting, a rolling window, and a guard-to-registry write path with its own
+access control; none of that exists. Treat the field as a declared intent
+recorded against the agent, not as a control. It is documented rather than
+deleted because the value is already set on live registrations, and silently
+removing a limit an operator believes is in force would be worse than saying
+plainly that it never was.
+
+**4. ~~The agent id is supplied by the caller.~~ FIXED in source — deployed
+contracts still affected.**
+
+`AgentRegistry.registerAgent` derives the id as
+`keccak256(abi.encodePacked(wallet))` — the form `ExecutionGuard.execute()`
+computes — and returns it. Previously the id was a parameter, so an agent could
+be registered under an id the guard would never look up: registration
+succeeded, the agent appeared active, and every execution reverted with "agent
+inactive". One such registration is still live on testnet, and a second deploy
+script existed solely to compute the id by hand.
+
+Covered by `test_RegistrationUsesTheIdTheGuardDerives`.
+
+**5. Refusals were not recorded on-chain at all.**
+
+`ExecutionGuard` emitted `ExecutionDenied` and `ExecutionEscalated` and then
+reverted. A reverted transaction produces no logs, so neither event could ever
+appear in a receipt — the contracts declared an audit trail for refusals and
+kept none. The only on-chain record was `AttestationIssued`, emitted inside
+successful executions, making the chain a log of what ran rather than of what
+was decided.
+
+`RiskAttestationRegistry.anchorDecision` now records any verdict — including
+DENY, ESCALATE, and an `UNDETERMINED` reversibility — in a transaction that
+succeeds precisely because it executes nothing. Anchoring is permissionless
+(the evaluator's signature is the authorisation) and deliberately does not
+consume the attestation, so a recorded denial does not block the approval that
+follows remediation. The dead events have been removed.
+
+**This is source-only. The deployed contracts have no `anchorDecision`, so
+every denial in the live system remains invisible.**
+
+Covered by `test/Anchoring.t.sol`.
+
+**6. `TreasuryVault` is not wired into the execution path** and its `withdraw`
 function checks the caller's own balance while being `onlyOwner`, so deposits
 from any other address are unrecoverable.
 
-**5. Neither the contracts nor the fixes above have been independently
+**7. Neither the contracts nor the fixes above have been independently
 audited.** The test suite is written by the same people who wrote the
 contracts, and passing tests are evidence about the cases someone thought to
 write, not a security review.
@@ -1013,12 +1071,18 @@ land before the protocol is presented as a security artifact.
 
 - [x] EIP-712 signing over the full attestation, so the decision is bound
 - [x] Restrict `recordAttestation` to `ExecutionGuard`
-- [ ] Derive `agentId` in `registerAgent` rather than trusting the caller
-- [ ] Enforce (or remove) `maxTransactionValue` and `dailyLimit` for token flows
+- [x] Derive `agentId` in `registerAgent` rather than trusting the caller
+- [x] Record refusals on-chain — `anchorDecision`, and the dead denial events removed
+- [x] An off-chain signer that produces a digest this guard accepts, with the
+      encoding pinned on both sides so the two cannot drift silently
+- [x] Reject `APPROVE` carrying an `UNDETERMINED` reversibility
+- [ ] Enforce `maxTransactionValue` for token flows — `dailyLimit` is documented
+      as advisory and unenforced
 - [x] `ExecutionGuard` test suite, including regressions for both flaws above
 - [x] Attack-scenario tests — [ ] stateful invariant suite
 - [x] CI: `forge fmt --check` + `forge build` + `forge test` on every push
-- [ ] **Redeploy and republish addresses — the live deployment predates the fixes**
+- [ ] **Redeploy and republish addresses — the live deployment predates every
+      fix above and is now also ABI-incompatible with this source**
 
 ## Phase 2 — Governance Engine
 

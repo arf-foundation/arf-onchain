@@ -4,7 +4,9 @@ out = "out"
 libs = ["lib"]
 solc_version = "0.8.25"
 ffi = true
-via-ir = false
+# Foundry reads `via_ir`, not `via-ir`. Spelled with a hyphen it is silently
+# ignored, so this setting did nothing at all.
+via_ir = false
 remappings = [
     "@openzeppelin/=lib/openzeppelin-contracts/",
     "forge-std/=lib/forge-std/src/"

@@ -1,5 +1,28 @@
 # ARF Onchain — Monad Testnet Deployment
 
+> ### ⛔ These addresses no longer match the source in this repository
+>
+> The deployed contracts predate the current `contracts/`, and the interface
+> has since changed. Do not generate calls from the source in this repo against
+> the addresses below — they will revert in ways that look like bugs in your
+> client and are not. Specifically:
+>
+> - `AgentRegistry.registerAgent` took `(bytes32 agentId, address wallet,
+address owner, uint256, uint256)`; it now takes
+>   `(address wallet, address owner, uint256, uint256)` and derives the id.
+> - `RiskAttestationRegistry.Reversibility` gained a fourth member,
+>   `UNDETERMINED`. Attestations encoding it cannot be represented by the
+>   deployed enum.
+> - `RiskAttestationRegistry.anchorDecision` does not exist on-chain yet, so
+>   **no denial or escalation in the deployed system leaves any record at all.**
+> - `ExecutionGuard.ExecutionDenied` and `ExecutionEscalated` were removed as
+>   dead code; they are declared in the deployed bytecode but were never
+>   observable, because both paths revert and a reverted transaction emits no
+>   logs.
+>
+> A redeploy is required and needs a funded testnet wallet. Until then, treat
+> everything below as a record of what is live, not as an integration target.
+
 > ### ⚠️ Demonstration deployment — do not send funds
 >
 > These contracts are an **unaudited hackathon protocol with known, documented
@@ -72,24 +95,30 @@ A second entry, `keccak256("treasury-agent-01")` =
 `0x43524ead…`, is also registered and active. It is a leftover from the first
 run of `RegisterAgent.s.sol` and is **unreachable** — no address hashes to it,
 so no `execute()` call can ever select it. It is inert, not dangerous, and it
-illustrates the underlying contract issue: `AgentRegistry.registerAgent` accepts
-an arbitrary `bytes32` agent ID with no constraint tying it to the wallet, so it
-will happily store registrations the guard can never use. Fixing that is a
-Phase 1b item.
+illustrates the underlying contract issue: the deployed
+`AgentRegistry.registerAgent` accepts an arbitrary `bytes32` agent ID with no
+constraint tying it to the wallet, so it will happily store registrations the
+guard can never use.
 
-## Known stale reference in the scripts
+**Fixed in source.** `registerAgent` now derives the id from the wallet and
+returns it, so the unreachable registration is no longer expressible. The
+deployed contract still behaves as described above.
 
-`script/RegisterAgentCorrect.s.sol` targets an `AgentRegistry` at
-`0x875f065F8D50bc657F3f9fa37cdB44Df3990EC88`, under a comment reading "NEW
-AgentRegistry address".
+## Orphaned registry
 
-**That registry is orphaned.** It holds contract code and it contains the
-correctly-derived agent ID, but the deployed `ExecutionGuard` does not read it —
-`agentRegistry()` is immutable and points at `0x7C1798…`. Registering an agent
-through that script therefore has no effect on anything the guard can see.
+An `AgentRegistry` at `0x875f065F8D50bc657F3f9fa37cdB44Df3990EC88` holds
+contract code and contains a correctly-derived agent ID, but the deployed
+`ExecutionGuard` does not read it — `agentRegistry()` is immutable and points at
+`0x7C1798…`. Registering an agent there has no effect on anything the guard can
+see.
 
-The address in the table above is the live one. The script needs updating; the
-table does not.
+It was targeted by `script/RegisterAgentCorrect.s.sol`, which existed only
+because the id derivation had to be done by hand. That script has been deleted
+and `script/RegisterAgent.s.sol` now reads its registry address from
+`AGENT_REGISTRY_ADDRESS` rather than hardcoding one — a stale literal is how the
+two scripts came to configure two different deployments in the first place.
+
+The address in the table above is the live one.
 
 ## Verifying this yourself
 
@@ -117,7 +146,13 @@ When the Phase 1b fixes land, redeploy rather than patching around these
 addresses, and update this file in the same commit:
 
 - [ ] Deploy fresh registries and guard (the guard's registry pointers are immutable)
+- [ ] Call `RiskAttestationRegistry.setExecutionGuard` — without it every
+      `recordAttestation` and every `anchorDecision` reverts
 - [ ] Call `setTrustedEvaluator` and record the value here
-- [ ] Register agents using the guard-derived ID form only
-- [ ] Delete the orphaned `0x875f06…` reference from the scripts
+- [ ] Register agents with `script/RegisterAgent.s.sol` (the id is derived now)
+- [x] Delete the orphaned `0x875f06…` reference from the scripts
 - [ ] Replace the address table above and note the superseded addresses
+- [ ] Remove the ABI-divergence banner at the top of this file
+- [ ] Re-pin the off-chain signer's `EIP712Domain.verifying_contract` to the new
+      `ExecutionGuard` address — the domain separator binds to it, so every
+      attestation signed against the old address is rejected by the new guard
