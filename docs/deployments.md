@@ -1,27 +1,9 @@
 # ARF Onchain — Monad Testnet Deployment
 
-> ### ⛔ These addresses no longer match the source in this repository
->
-> The deployed contracts predate the current `contracts/`, and the interface
-> has since changed. Do not generate calls from the source in this repo against
-> the addresses below — they will revert in ways that look like bugs in your
-> client and are not. Specifically:
->
-> - `AgentRegistry.registerAgent` took `(bytes32 agentId, address wallet,
-address owner, uint256, uint256)`; it now takes
->   `(address wallet, address owner, uint256, uint256)` and derives the id.
-> - `RiskAttestationRegistry.Reversibility` gained a fourth member,
->   `UNDETERMINED`. Attestations encoding it cannot be represented by the
->   deployed enum.
-> - `RiskAttestationRegistry.anchorDecision` does not exist on-chain yet, so
->   **no denial or escalation in the deployed system leaves any record at all.**
-> - `ExecutionGuard.ExecutionDenied` and `ExecutionEscalated` were removed as
->   dead code; they are declared in the deployed bytecode but were never
->   observable, because both paths revert and a reverted transaction emits no
->   logs.
->
-> A redeploy is required and needs a funded testnet wallet. Until then, treat
-> everything below as a record of what is live, not as an integration target.
+✅ **These addresses match the current source.** Redeployed 2026-09-06 with all
+Phase 1b fixes (off-chain signer binding, `anchorDecision`, derived agent ids,
+`UNDETERMINED` reversibility). See [Deployment status](#deployment-status-2026-09-06)
+below.
 
 > ### ⚠️ Demonstration deployment — do not send funds
 >
@@ -29,62 +11,91 @@ address owner, uint256, uint256)`; it now takes
 > security flaws**. See [Known Limitations](../README.md#known-limitations) in
 > the README before interacting with them.
 >
-> Most importantly: the evaluator signature does not cover the governance
-> decision, so a caller holding a validly signed attestation can change
-> `APPROVE` / `ESCALATE` / `DENY` on it. The execution boundary these addresses
-> implement **can be bypassed by the caller**. They exist to demonstrate the
-> architecture, not to enforce it.
->
 > Do not deposit anything into `TreasuryVault`. Its `withdraw` is `onlyOwner`
 > but checks the caller's own balance, so deposits from any other address are
 > unrecoverable.
 >
-> These addresses will be replaced once the Phase 1b fixes land. Treat them as
-> disposable.
+> Both the deployer and evaluator keys below are throwaway testnet-only keys
+> generated for this deployment, held outside version control. Treat every
+> address on this page as disposable.
 
 **Network:** Monad Testnet
 **Chain ID:** 10143 (`0x279f`)
-**Current deployed owner:** `0xaa160C367632CAbcF46d6F7e423b56c71C8B4841`
-**Addresses documented:** 2026-09-04
-**On-chain state last verified:** 2026-09-04
+**Deployer / owner:** `0x444F1f04451b4216854e1241228E999020b0D0d5`
+**Trusted evaluator:** `0xb1C0e84Ed50d74eBd107624ec9B97334E242F36a`
+**Addresses documented:** 2026-09-06
+**On-chain state last verified:** 2026-09-06 (every field below was read back
+from chain with `cast`, not copied from deploy logs)
 
 ## Deployment status (2026-09-06)
 
-**Pending redeploy.** The fixes in this repository are ready to deploy. A new
-deployer (`0x444F1f04451b4216854e1241228E999020b0D0d5`) has been generated for
-testnet. Deployment awaits funding the new deployer address with testnet MON,
-then running `forge script script/Deploy.s.sol --broadcast`.
+**Redeployed and live.** Deployed with `forge script script/Deploy.s.sol
+--broadcast`, using `forge` v1.8.1 installed via `foundryup`.
+
+**A real bug was caught and fixed during this deployment, after the initial
+broadcast.** `Deploy.s.sol` passed `msg.sender` as `ExecutionGuard`'s initial
+trusted evaluator. Inside a Forge script's `run()`, `msg.sender` is Foundry's
+script-default caller — `address(uint160(uint256(keccak256("foundry default
+caller"))))`, a hash-derived constant with no discoverable private key — not
+the address `vm.startBroadcast` uses to sign the transactions. The first
+broadcast therefore deployed a guard whose `trustedEvaluator()` read back as
+`0x1804c8AB1F12E6bbf3894d4083f33e07309d1f38`: a real, checksummed address that
+nobody can ever produce a valid signature for. `execute()` was permanently
+unusable on that guard from the moment it was deployed.
+
+This was caught by verifying `trustedEvaluator()` on-chain rather than trusting
+the deploy log, and cross-checking the address against `forge-std/Base.sol`'s
+`DEFAULT_SENDER` constant — which matched exactly. **The identical address is
+recorded as the previous (2026-09-04) deployment's trusted evaluator in the
+git history of this file**, with a note claiming it was set deliberately via
+`setTrustedEvaluator`. That claim was never independently verified against
+on-chain nonce/event data and was very likely the same unexamined bug, not a
+deliberate rotation — the earlier deployment's guard was almost certainly also
+unusable for the same reason. `Deploy.s.sol` now derives the deployer's address
+with `vm.addr(deployerPrivateKey)` instead of reading `msg.sender`.
+
+Fixed without a second full redeploy: the already-deployed guard's evaluator
+was rotated with `setTrustedEvaluator` (owner-only, called from the deployer
+key) to a freshly generated, controlled key
+(`0xb1C0e84Ed50d74eBd107624ec9B97334E242F36a`). One agent was registered via
+`script/RegisterAgent.s.sol` (the deployer's own wallet, matching the pattern
+used in the prior deployment). Both actions are confirmed on-chain below, not
+inferred from script output.
+
+**Lesson for future deploys:** never trust a deploy script's own console
+output as verification. Read the deployed state back independently — see
+[Verifying this yourself](#verifying-this-yourself).
 
 ## Contracts
 
 | Contract                  | Address                                      |
 | ------------------------- | -------------------------------------------- |
-| `AgentRegistry`           | `0x7C17981030399d0b51b097a9483e60df8F3ce7A7` |
-| `PolicyRegistry`          | `0xA56fbA988f78c2410f659cfd4fBA1B0abB0a35bd` |
-| `RiskAttestationRegistry` | `0x3bA57C50B44717770bd1F5eA67C9D5Ad50E5819F` |
-| `ExecutionGuard`          | `0x58B7fa769d95D0C88D7080BCA50533C660e7E74e` |
-| `TreasuryVault`           | `0xa4b432faB9000833f41F2991BbC0E59727FBc3b9` |
-| `AuditRegistry`           | `0xb4cB353Eb5f0F5C52E718a1c62592639fB0E3434` |
+| `AgentRegistry`           | `0x0398Aa2d8FC3A68525Ec787fF6c05fcE5395AFAd` |
+| `PolicyRegistry`          | `0xa0b6dEDDbcceE56853032409f4990a1F9785a196` |
+| `RiskAttestationRegistry` | `0x2698Db6946225149eD890f47e1996e03263F7B8D` |
+| `ExecutionGuard`          | `0xCf783F76D33741fc0CA5339AF53D24a2b7f4c75d` |
+| `TreasuryVault`           | `0x4aAa5e6D056b0F4245f32600Bd975280B58EEe39` |
+| `AuditRegistry`           | `0x9c727eA41EE567918EFbF46007430FC84eBAc626` |
 
 All six addresses were confirmed to hold contract code on Monad testnet on
-2026-09-04.
+2026-09-06 (`chain-id` 10143, block 60357494–60357523 for the deploy sequence).
 
 ## What `ExecutionGuard` is actually wired to
 
 `ExecutionGuard` stores its three registry addresses as `immutable`, so they are
-fixed at deployment and cannot be repointed. Read back from chain:
+fixed at deployment and cannot be repointed. Read back from chain with `cast`:
 
-| Field                   | Value                                        |
-| ----------------------- | -------------------------------------------- |
-| `agentRegistry()`       | `0x7C17981030399d0b51b097a9483e60df8F3ce7A7` |
-| `policyRegistry()`      | `0xA56fbA988f78c2410f659cfd4fBA1B0abB0a35bd` |
-| `attestationRegistry()` | `0x3bA57C50B44717770bd1F5eA67C9D5Ad50E5819F` |
-| `trustedEvaluator()`    | `0x1804c8Ab1F12E6BbF3894d4083F33e07309D1f38` |
-| `owner()`               | `0xaa160C367632CAbcF46d6F7e423b56c71C8B4841` |
+| Field                     | Value                                        |
+| ------------------------- | -------------------------------------------- |
+| `agentRegistry()`         | `0x0398Aa2d8FC3A68525Ec787fF6c05fcE5395AFAd` |
+| `policyRegistry()`        | `0xa0b6dEDDbcceE56853032409f4990a1F9785a196` |
+| `attestationRegistry()`   | `0x2698Db6946225149eD890f47e1996e03263F7B8D` |
+| `trustedEvaluator()`      | `0xb1C0e84Ed50d74eBd107624ec9B97334E242F36a` |
+| `owner()` (AgentRegistry) | `0x444F1f04451b4216854e1241228E999020b0D0d5` |
 
-The trusted evaluator is **not** the deployer. `Deploy.s.sol` passes the
-deployer as the initial evaluator; the live value was set afterwards via
-`setTrustedEvaluator`. Only signatures from `0x1804c8Ab…` are accepted.
+`trustedEvaluator()` was rotated once, at block 60358675, from the buggy
+default-caller value to the address above — see
+[Deployment status](#deployment-status-2026-09-06).
 
 ## Registered agents
 
@@ -93,39 +104,13 @@ deployer as the initial evaluator; the live value was set afterwards via
 ID from the caller. For the deployer address that is:
 
 ```text
-agentId = 0x235e44f30ff9e9d302605f47dbaa2cfb5614b51773846d9ccecba70aa5a72ca4
+agentId = 0x9914a43c31eefd6e92dd784a3a04c090bb7fd7299732399de71713be27180410
 ```
 
-That ID is registered and active in `0x7C1798…`, so the guard can resolve it.
-
-A second entry, `keccak256("treasury-agent-01")` =
-`0x43524ead…`, is also registered and active. It is a leftover from the first
-run of `RegisterAgent.s.sol` and is **unreachable** — no address hashes to it,
-so no `execute()` call can ever select it. It is inert, not dangerous, and it
-illustrates the underlying contract issue: the deployed
-`AgentRegistry.registerAgent` accepts an arbitrary `bytes32` agent ID with no
-constraint tying it to the wallet, so it will happily store registrations the
-guard can never use.
-
-**Fixed in source.** `registerAgent` now derives the id from the wallet and
-returns it, so the unreachable registration is no longer expressible. The
-deployed contract still behaves as described above.
-
-## Orphaned registry
-
-An `AgentRegistry` at `0x875f065F8D50bc657F3f9fa37cdB44Df3990EC88` holds
-contract code and contains a correctly-derived agent ID, but the deployed
-`ExecutionGuard` does not read it — `agentRegistry()` is immutable and points at
-`0x7C1798…`. Registering an agent there has no effect on anything the guard can
-see.
-
-It was targeted by `script/RegisterAgentCorrect.s.sol`, which existed only
-because the id derivation had to be done by hand. That script has been deleted
-and `script/RegisterAgent.s.sol` now reads its registry address from
-`AGENT_REGISTRY_ADDRESS` rather than hardcoding one — a stale literal is how the
-two scripts came to configure two different deployments in the first place.
-
-The address in the table above is the live one.
+Confirmed active with `cast call ... isActive(bytes32)` and confirmed to match
+`agentIdFor(deployer)` on-chain — both the id derivation and the registration
+were checked independently, not assumed from the register script's console
+output.
 
 ## Verifying this yourself
 
@@ -133,7 +118,8 @@ Everything above is public chain state. To re-check it, with `cast`:
 
 ```bash
 export RPC=https://testnet-rpc.monad.xyz
-export GUARD=0x58B7fa769d95D0C88D7080BCA50533C660e7E74e
+export GUARD=0xCf783F76D33741fc0CA5339AF53D24a2b7f4c75d
+export AGENT_REGISTRY=0x0398Aa2d8FC3A68525Ec787fF6c05fcE5395AFAd
 
 cast chain-id --rpc-url $RPC                      # expect 10143
 cast code $GUARD --rpc-url $RPC | head -c 20      # expect non-empty
@@ -141,25 +127,34 @@ cast code $GUARD --rpc-url $RPC | head -c 20      # expect non-empty
 cast call $GUARD "agentRegistry()(address)"     --rpc-url $RPC
 cast call $GUARD "trustedEvaluator()(address)"  --rpc-url $RPC
 
-cast call 0x7C17981030399d0b51b097a9483e60df8F3ce7A7 \
+cast call $AGENT_REGISTRY \
   "isActive(bytes32)(bool)" \
-  $(cast keccak $(cast abi-encode-packed "f(address)" 0xaa160C367632CAbcF46d6F7e423b56c71C8B4841)) \
+  0x9914a43c31eefd6e92dd784a3a04c090bb7fd7299732399de71713be27180410 \
   --rpc-url $RPC
 ```
 
 ## Redeployment checklist
 
-When the Phase 1b fixes land, redeploy rather than patching around these
-addresses, and update this file in the same commit:
-
-- [ ] Deploy fresh registries and guard (the guard's registry pointers are immutable)
-- [ ] Call `RiskAttestationRegistry.setExecutionGuard` — without it every
+- [x] Deploy fresh registries and guard (the guard's registry pointers are immutable)
+- [x] Call `RiskAttestationRegistry.setExecutionGuard` — without it every
       `recordAttestation` and every `anchorDecision` reverts
-- [ ] Call `setTrustedEvaluator` and record the value here
-- [ ] Register agents with `script/RegisterAgent.s.sol` (the id is derived now)
+- [x] Call `setTrustedEvaluator` and record the value here — required this
+      time because of the `msg.sender` bug documented above, not merely as a
+      rotation from the deployer
+- [x] Register agents with `script/RegisterAgent.s.sol` (the id is derived now)
 - [x] Delete the orphaned `0x875f06…` reference from the scripts
-- [ ] Replace the address table above and note the superseded addresses
-- [ ] Remove the ABI-divergence banner at the top of this file
-- [ ] Re-pin the off-chain signer's `EIP712Domain.verifying_contract` to the new
-      `ExecutionGuard` address — the domain separator binds to it, so every
-      attestation signed against the old address is rejected by the new guard
+- [x] Replace the address table above and note the superseded addresses
+- [x] Remove the ABI-divergence banner at the top of this file
+- [x] Re-pin the off-chain signer's `EIP712Domain.verifying_contract` to the new
+      `ExecutionGuard` address — done in `enterprise/examples/fsx_governance_to_chain.py`;
+      the library itself (`arf_enterprise.onchain.attestation.EIP712Domain`) takes
+      the contract address as a parameter and has no address baked in
+
+## Superseded deployment (2026-09-04)
+
+The previous deployment (`AgentRegistry` at `0x7C17981030399d0b51b097a9483e60df8F3ce7A7`,
+`ExecutionGuard` at `0x58B7fa769d95D0C88D7080BCA50533C660e7E74e`, and the rest of
+that set) predates the Phase 1b fixes and, per the analysis above, was almost
+certainly deployed with the same unusable-evaluator bug. It is superseded and
+should not be used. Full detail on why it was already unusable before this
+redeploy remains in git history of this file if needed.

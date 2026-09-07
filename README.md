@@ -23,14 +23,16 @@
 > agent, the indexer, the frontend, the threat model, and a stateful invariant
 > suite.
 >
-> **Recently fixed in source, not yet redeployed:** the evaluator signature now
-> covers the whole attestation as EIP-712 typed data; `recordAttestation` is
-> restricted to the guard; `registerAgent` derives the agent id; refusals are
-> recorded on-chain by `anchorDecision`; and an `APPROVE` carrying an
-> `UNDETERMINED` reversibility is rejected. **The contracts deployed at the
-> addresses in [`docs/deployments.md`](docs/deployments.md) predate all of it,
-> remain exploitable, and no longer match this source's ABI.** Read
-> [Known Limitations](#known-limitations) for what is still open.
+> **Fixed in source and redeployed (2026-09-06):** the evaluator signature now
+> covers the whole attestation as EIP-712 typed data, including the decision
+> field; `recordAttestation` is restricted to the guard; `registerAgent`
+> derives the agent id; refusals are recorded on-chain by `anchorDecision`;
+> and an `APPROVE` carrying an `UNDETERMINED` reversibility is rejected.
+> Current addresses are in [`docs/deployments.md`](docs/deployments.md), which
+> also documents a deploy-script bug caught and fixed during this redeploy —
+> the initial trusted evaluator was accidentally set to an address no one
+> holds a private key for. Read [Known Limitations](#known-limitations) for
+> what is still open.
 >
 > Nothing here has been independently audited. Do not use this to secure funds.
 
@@ -1081,8 +1083,7 @@ land before the protocol is presented as a security artifact.
 - [x] `ExecutionGuard` test suite, including regressions for both flaws above
 - [x] Attack-scenario tests — [ ] stateful invariant suite
 - [x] CI: `forge fmt --check` + `forge build` + `forge test` on every push
-- [ ] **Redeploy and republish addresses — the live deployment predates every
-      fix above and is now also ABI-incompatible with this source**
+- [x] Redeploy and republish addresses
 
 ## Phase 2 — Governance Engine
 
