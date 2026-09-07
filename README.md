@@ -1087,8 +1087,15 @@ land before the protocol is presented as a security artifact.
 
 ## Phase 2 — Governance Engine
 
-- [ ] Reference risk evaluator
-- [ ] Policy evaluation
+- [x] Reference risk evaluator — `arf_enterprise.onchain.evaluator.ReferenceRiskEvaluator`
+      (in the private `enterprise` repo) composes an existing risk score +
+      recommendation with an actuator's reversibility reading into a signed
+      `RiskAttestation`; rationale text is persisted off-chain (Postgres via
+      arf-api's `/api/v1/onchain/rationale`), keyed by the same hash that is
+      anchored on-chain
+- [ ] Policy evaluation — `policyHash` is still always `bytes32(0)` in every
+      caller; no policy has been registered via `PolicyRegistry.setPolicy`
+      and referenced by a real evaluation yet
 - [x] Reversibility classification — on-chain enum; classification is off-chain
 - [x] APPROVE / ESCALATE / DENY — enum and branch logic in `ExecutionGuard`
 - [x] Signed attestations — EIP-712 over the full struct
