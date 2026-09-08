@@ -227,8 +227,20 @@ contract ExecutionGuardTest is GuardHarness {
             new ExecutionGuard(address(agentRegistry), address(policyRegistry), address(fresh), evaluator);
 
         uint256 expiry = block.timestamp + VALID_FOR;
+        // Must match approvedCopy()'s policyHash (UNPOLICED_POLICY_HASH), or
+        // the recomputed intent hash disagrees with the attestation's own
+        // policyHash field and the guard reverts at the intent-hash-mismatch
+        // check (step 7) before ever reaching the registry this test means
+        // to exercise (step 9's recordAttestation call).
         bytes32 intentHash = unbound.computeIntentHash(
-            agent, address(target), 0, pingCalldata(), bytes32(0), block.chainid, block.timestamp + VALID_FOR, 0
+            agent,
+            address(target),
+            0,
+            pingCalldata(),
+            UNPOLICED_POLICY_HASH,
+            block.chainid,
+            block.timestamp + VALID_FOR,
+            0
         );
 
         // Deliberately not calling fresh.setExecutionGuard.
@@ -357,6 +369,57 @@ contract ExecutionGuardTest is GuardHarness {
         vm.prank(agent);
         vm.expectRevert("ExecutionGuard: policy inactive");
         guard.execute(address(target), 0, pingCalldata(), att, sig);
+    }
+
+    /**
+     * @dev `bytes32(0)` used to bypass the policy check entirely. It no
+     * longer does: it is permanently reserved and cannot be registered,
+     * so it is simply an inactive policy and execution reverts.
+     */
+    function test_UnregisteredZeroPolicyHashNoLongerBypassesTheCheck() public {
+        uint256 expiry = block.timestamp + VALID_FOR;
+        bytes32 intentHash = intentHashFor(agent, address(target), 0, pingCalldata(), bytes32(0), expiry);
+
+        RiskAttestationRegistry.RiskAttestation memory att = RiskAttestationRegistry.RiskAttestation({
+            intentHash: intentHash,
+            policyHash: bytes32(0),
+            modelHash: keccak256("arf-model-v1"),
+            riskScore: 40,
+            reversibility: RiskAttestationRegistry.Reversibility.REVERSIBLE,
+            decision: RiskAttestationRegistry.Decision.APPROVE,
+            agent: agent,
+            evaluator: evaluator,
+            issuedAt: block.timestamp,
+            validUntil: expiry,
+            rationaleHash: keccak256("because")
+        });
+        bytes memory sig = signAsEvaluator(att);
+
+        vm.prank(agent);
+        vm.expectRevert("ExecutionGuard: policy inactive");
+        guard.execute(address(target), 0, pingCalldata(), att, sig);
+
+        assertFalse(target.pinged(), "an unregistered zero policy hash must not execute");
+    }
+
+    /**
+     * @dev The replacement for the old zero-hash bypass: "no policy applies"
+     * is now the explicitly registered UNPOLICED_POLICY_HASH sentinel
+     * (see Harness.sol's setUp), not an ambient default. This is exactly
+     * what attestationFor() already builds -- named explicitly here so the
+     * property has its own test rather than only being exercised
+     * incidentally by every other passing test in the suite.
+     */
+    function test_ExplicitlyRegisteredUnpolicedSentinelAllowsExecution() public {
+        assertTrue(policyRegistry.isPolicyActive(UNPOLICED_POLICY_HASH));
+
+        (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig) = approvedAttestation();
+        assertEq(att.policyHash, UNPOLICED_POLICY_HASH);
+
+        vm.prank(agent);
+        guard.execute(address(target), 0, pingCalldata(), att, sig);
+
+        assertTrue(target.pinged());
     }
 
     // ------------------------------------------------------------------

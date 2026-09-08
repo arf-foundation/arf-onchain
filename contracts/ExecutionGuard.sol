@@ -107,10 +107,18 @@ contract ExecutionGuard is Ownable, ReentrancyGuard, EIP712 {
         );
         require(computedIntentHash == attestation.intentHash, "ExecutionGuard: intent hash mismatch");
 
-        // 8. Verify policy is active (if policyHash is non-zero)
-        if (attestation.policyHash != bytes32(0)) {
-            require(policyRegistry.isPolicyActive(attestation.policyHash), "ExecutionGuard: policy inactive");
-        }
+        // 8. Verify policy is active.
+        //
+        // Every attestation must reference a registered, active policy --
+        // including "no policy applies", which must be the hash of an
+        // explicitly registered sentinel spec, not the ambient zero value.
+        // A bare `bytes32(0)` used to skip this check entirely, so "nobody
+        // set a real hash" and "this transaction is deliberately unpoliced"
+        // were the same bit pattern and the same behavior. They no longer
+        // are: `bytes32(0)` is permanently reserved and cannot be
+        // registered or active, so skipping policy selection is now a
+        // revert instead of a silent pass.
+        require(policyRegistry.isPolicyActive(attestation.policyHash), "ExecutionGuard: policy inactive");
 
         // 9. Process decision
         if (attestation.decision == RiskAttestationRegistry.Decision.APPROVE) {

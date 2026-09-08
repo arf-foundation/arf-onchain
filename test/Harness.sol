@@ -60,6 +60,26 @@ abstract contract GuardHarness is Test {
     /// @dev How far in the future attestations are valid by default.
     uint256 internal constant VALID_FOR = 1 hours;
 
+    /**
+     * @dev The "explicitly unpoliced" sentinel policy hash.
+     *
+     * `ExecutionGuard.execute()` used to skip its policy check entirely
+     * when `attestation.policyHash == bytes32(0)`. It no longer does --
+     * every attestation must reference a registered, active policy, and
+     * "no policy applies" is now a real, auditable choice: register this
+     * hash and reference it deliberately, rather than relying on an
+     * ambient zero value nobody had to opt into.
+     *
+     * Pinned to `keccak256(arf_enterprise.onchain.policy_spec.canonical_
+     * bytes(UNPOLICED_SPEC))` -- see `test_onchain_policy_spec.py`'s
+     * `PINNED_UNPOLICED_HASH`. If either side's encoding ever changes, both
+     * must change together or a real evaluator's "unpoliced" attestation
+     * gets rejected here with "policy inactive" for a reason nothing in
+     * this file explains.
+     */
+    bytes32 internal constant UNPOLICED_POLICY_HASH =
+        0x5e368ac55dc3cbcaf7b27c1723e72a658ff6afdf7ec05f32b433ed309c77fb8c;
+
     function setUp() public virtual {
         evaluator = vm.addr(EVALUATOR_PK);
 
@@ -75,6 +95,10 @@ abstract contract GuardHarness is Test {
 
         agentId = agentRegistry.registerAgent(agent, agent, MAX_TX, DAILY_LIMIT);
         assertEq(agentId, agentRegistry.agentIdFor(agent), "registry derived an id the guard will not look up");
+
+        // Registered so attestationFor()'s default (unpoliced) attestations
+        // pass the guard's policy check -- see UNPOLICED_POLICY_HASH.
+        policyRegistry.setPolicy(UNPOLICED_POLICY_HASH, "explicitly unpoliced -- no policy applies");
 
         // Timestamps start at 1 in Foundry; move forward so expiry arithmetic
         // below cannot underflow.
@@ -129,11 +153,11 @@ abstract contract GuardHarness is Test {
         returns (RiskAttestationRegistry.RiskAttestation memory att, bytes memory sig)
     {
         uint256 expiry = block.timestamp + VALID_FOR;
-        bytes32 intentHash = intentHashFor(agent, address(target), 0, pingCalldata(), bytes32(0), expiry);
+        bytes32 intentHash = intentHashFor(agent, address(target), 0, pingCalldata(), UNPOLICED_POLICY_HASH, expiry);
 
         att = RiskAttestationRegistry.RiskAttestation({
             intentHash: intentHash,
-            policyHash: bytes32(0),
+            policyHash: UNPOLICED_POLICY_HASH,
             modelHash: keccak256("arf-model-v1"),
             riskScore: riskScore,
             reversibility: RiskAttestationRegistry.Reversibility.REVERSIBLE,

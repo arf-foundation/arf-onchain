@@ -249,8 +249,8 @@ contract AnchoringTest is GuardHarness {
     function test_AnUnclassifiedActionCannotBeApproved() public {
         uint256 expiry = block.timestamp + VALID_FOR;
         RiskAttestationRegistry.RiskAttestation memory att = RiskAttestationRegistry.RiskAttestation({
-            intentHash: intentHashFor(agent, address(target), 0, pingCalldata(), bytes32(0), expiry),
-            policyHash: bytes32(0),
+            intentHash: intentHashFor(agent, address(target), 0, pingCalldata(), UNPOLICED_POLICY_HASH, expiry),
+            policyHash: UNPOLICED_POLICY_HASH,
             modelHash: keccak256("arf-model-v1"),
             riskScore: 100,
             reversibility: RiskAttestationRegistry.Reversibility.UNDETERMINED,

@@ -573,7 +573,38 @@ Covered by `test/Anchoring.t.sol`.
 function checks the caller's own balance while being `onlyOwner`, so deposits
 from any other address are unrecoverable.
 
-**7. Neither the contracts nor the fixes above have been independently
+**7. ~~A bare `bytes32(0)` policy hash silently bypassed the policy check.~~
+FIXED in source — deployed contracts still affected.**
+
+`ExecutionGuard.execute()` used to skip `PolicyRegistry.isPolicyActive` entirely
+when `attestation.policyHash == bytes32(0)`. That made "nobody set a real
+hash" and "this transaction is deliberately unpoliced" the same bit pattern
+and the same behavior — the same coverage-vs-compliance conflation the
+off-chain policy engine's `PolicyEvaluator.covers()` exists specifically to
+prevent, reintroduced on-chain.
+
+The check is now unconditional: every attestation must reference a
+registered, active policy. "No policy applies" is `UNPOLICED_SPEC`
+(`arf_enterprise.onchain.policy_spec`, private `enterprise` repo) — a real,
+named, hashed policy an owner registers via `PolicyRegistry.setPolicy` like
+any other, not an implicit default.
+
+**This is source-only. The deployed `ExecutionGuard` still contains the old
+`if (attestation.policyHash != bytes32(0))` bypass**, so a `bytes32(0)`
+attestation against the live contract still skips the policy check exactly as
+before.
+
+`PolicyRegistry.setPolicy` also now refuses to register `bytes32(0)` at all
+(`require(policyHash != bytes32(0))`), so the reservation holds structurally
+rather than by convention — an owner mistake or a registration script with an
+uncomputed-hash bug cannot silently reactivate the old ambiguity by making
+zero an active policy.
+
+Covered by `test_UnregisteredZeroPolicyHashNoLongerBypassesTheCheck`,
+`test_ExplicitlyRegisteredUnpolicedSentinelAllowsExecution`, and
+`PolicyRegistry.t.sol`'s `test_ZeroHashCanNeverBeRegistered`.
+
+**8. Neither the contracts nor the fixes above have been independently
 audited.** The test suite is written by the same people who wrote the
 contracts, and passing tests are evidence about the cases someone thought to
 write, not a security review.
@@ -1093,9 +1124,15 @@ land before the protocol is presented as a security artifact.
       `RiskAttestation`; rationale text is persisted off-chain (Postgres via
       arf-api's `/api/v1/onchain/rationale`), keyed by the same hash that is
       anchored on-chain
-- [ ] Policy evaluation — `policyHash` is still always `bytes32(0)` in every
-      caller; no policy has been registered via `PolicyRegistry.setPolicy`
-      and referenced by a real evaluation yet
+- [ ] Policy evaluation — `arf_enterprise.onchain.policy_spec.PolicySpec`
+      (private `enterprise` repo) gives a policy a canonical hash and builds
+      the enforcing `Policy` tree from the same spec, so the two cannot
+      drift apart. `UNPOLICED_SPEC` is the "explicitly no policy applies"
+      sentinel, replacing the old meaning of a bare `bytes32(0)` — see the
+      `ExecutionGuard` change below. Still missing: nothing yet selects
+      *which* registered policy applies to a given intent, or folds
+      violations into the attested decision — every caller still hashes and
+      references only the unpoliced sentinel
 - [x] Reversibility classification — on-chain enum; classification is off-chain
 - [x] APPROVE / ESCALATE / DENY — enum and branch logic in `ExecutionGuard`
 - [x] Signed attestations — EIP-712 over the full struct
