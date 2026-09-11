@@ -19,7 +19,6 @@ Check the [Issues](https://github.com/arf-foundation/arf-onchain/issues) tab. Lo
 
 - `good first issue` – beginner-friendly
 - `help wanted` – active needs
-- `week-2` – ExecutionGuard implementation
 
 ### 2. Join the Discussion
 
@@ -34,12 +33,19 @@ Check the [Issues](https://github.com/arf-foundation/arf-onchain/issues) tab. Lo
 4. Run tests: `forge test`
 5. Push and open a PR
 
-## What We Need Right Now (Week 2)
+## What We Need Right Now
+
+`ExecutionGuard` (identity, EIP-712 attestation verification, replay/expiry/
+policy checks) and its 69-test suite are done — see
+[README.md](README.md#run-the-test-suite). Current open work, pulled from
+the README's own [Known Limitations](README.md#known-limitations) and
+[Roadmap](README.md#roadmap):
 
 | Task | Skills | Effort |
 |------|--------|--------|
-| Implement `execute()` in ExecutionGuard | Solidity, Foundry | Medium |
-| Write ECDSA signature recovery tests | Solidity, Foundry | Medium |
+| Enforce `maxTransactionValue` / `dailyLimit` for token flows | Solidity, Foundry | Medium |
+| Stateful invariant suite (`forge test` invariant testing) | Solidity, Foundry | Medium |
+| Decide TreasuryVault's fate — wire it into the execution path or remove it | Solidity | Medium |
 | Build Envio indexer config | TypeScript | Medium |
 | Design dashboard UI | React, Next.js | High |
 
