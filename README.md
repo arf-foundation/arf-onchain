@@ -150,6 +150,9 @@ nothing. That is the case an application database cannot make credibly and a
 chain can: not "the system ran safely," but "the system was asked to do
 something unsafe, and refused, and cannot quietly take that back."
 
+This is runnable, not just argued — see
+[Demo — Runnable Today](#demo--runnable-today).
+
 ---
 
 ## The Solution
@@ -659,7 +662,8 @@ arf-onchain/
 │   ├── Deploy.s.sol
 │   ├── RegisterAgent.s.sol          # superseded — see RegisterAgentCorrect
 │   ├── RegisterAgentCorrect.s.sol
-│   └── TestExecutionGuard.s.sol
+│   ├── TestExecutionGuard.s.sol
+│   └── DemoStorageGovernance.s.sol  # runnable — see Demo — Runnable Today
 │
 ├── test/
 │   ├── AgentRegistry.t.sol
@@ -892,6 +896,37 @@ Execute only when authorized
 See the [Roadmap](#roadmap) for sequencing. The production ARF decision engine
 is proprietary and separate from anything planned here; see
 [Public vs. Proprietary Components](#public-vs-proprietary-components).
+
+---
+
+# Demo — Runnable Today
+
+[`script/DemoStorageGovernance.s.sol`](script/DemoStorageGovernance.s.sol) is
+the runnable version of the [Why This Needs A Chain](#why-this-needs-a-chain-not-just-a-log)
+argument above. No `.env`, no RPC, and no funded wallet:
+
+```bash
+forge script script/DemoStorageGovernance.s.sol -vvv
+```
+
+It deploys a fresh local stack, then requests `delete_volume` on the same
+volume three times. Each request gets a different reversibility
+classification and decision — `COMPENSABLE` / `ESCALATE`, `IRREVERSIBLE` /
+`DENY`, `UNDETERMINED` / `DENY` — is signed as EIP-712 typed data the way
+`ExecutionGuard` verifies it, and anchored with
+`RiskAttestationRegistry.anchorDecision`, including the two refusals. The
+script reads `isDecisionAnchored` back for each one rather than trusting its
+own print statements.
+
+The classification inputs (which case gets which reversibility) are
+illustrative stand-ins, chosen to walk through all three bands — the
+production reversibility engine that performs this classification against a
+live cloud API is proprietary and outside this repository (see
+[Public vs. Proprietary Components](#public-vs-proprietary-components)). What
+is real: the contracts, the EIP-712 encoding, the signature, and the anchoring
+transaction. This is the same shape the private production evaluator's
+storage-governance integration emits, exercised here against public code
+only.
 
 ---
 
