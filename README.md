@@ -208,19 +208,19 @@ The result is a cryptographically verifiable governance attestation.
 
 ARF produces one of three governance outcomes.
 
-| Decision   |          Risk | Action                  |
-| ---------- | ------------: | ----------------------- |
-| `APPROVE`  |      `< 0.20` | Autonomous execution    |
-| `ESCALATE` | `0.20 – 0.75` | Human approval required |
-| `DENY`     |      `≥ 0.75` | Execution blocked       |
+| Decision   | Risk band                 | Action                  |
+| ---------- | -------------------------- | ----------------------- |
+| `APPROVE`  | Low                         | Autonomous execution    |
+| `ESCALATE` | Medium                      | Human approval required |
+| `DENY`     | High                        | Execution blocked       |
 
 Risk is evaluated together with policy, identity, exposure, and reversibility.
 
-These boundaries are not arbitrary. They fall out of the ARF engine's expected-loss
-minimization: with a false-approval cost of `10`, a false-denial cost of `8` and a
-human-review cost of `2`, the escalate/deny boundary is
-`1 − (review / false_denial) = 1 − 2/8 = 0.75`, and the approve/escalate boundary is
-`review / false_approval = 2/10 = 0.20`.
+The band boundaries are not arbitrary — they fall out of the ARF engine's
+expected-loss minimization over the relative costs of a false approval, a
+false denial, and a human review. The specific costs and resulting thresholds
+are part of the production calibration and are not published here; see
+[Public vs. Proprietary Components](#public-vs-proprietary-components).
 
 ### Reversibility
 
