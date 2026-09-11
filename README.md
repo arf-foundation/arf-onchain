@@ -121,6 +121,37 @@ Monad executes only what is authorized.
 
 ---
 
+## Why This Needs A Chain, Not Just A Log
+
+It would be easy to build the governance boundary above as an off-chain
+service with a Postgres audit table, and reasonable to ask why Monad is in
+this picture at all rather than being decorative.
+
+The answer is in the reversibility example already described above: whether
+`delete_volume` is recoverable is not a property of the verb, it is a reading
+of live provider state at the moment of the request — final-backup or not,
+readable or not. That reading is a claim, and a claim is worth nothing if the
+party who made it can revise it after the fact. An off-chain log is exactly
+that kind of revisable claim; a database row can be edited or deleted by
+whoever holds the credentials, silently, with no trace that it happened.
+
+Anchoring the signed attestation on Monad makes the reading permanent and
+attributable instead: the operator, an auditor, and the agent all see the same
+record, and none of them — including ARF itself — can edit it afterward.
+
+The part worth proving is specifically the **refusals**. An approved action
+that executes leaves an ordinary transaction receipt behind either way. A
+denied or escalated one does not: it never runs, so there is nothing in a
+normal execution log to show that ARF was ever asked, or what it decided.
+`RiskAttestationRegistry.anchorDecision` exists to record exactly that
+verdict — DENY, ESCALATE, or an `UNDETERMINED` reversibility included —
+permissionlessly, in a transaction that succeeds precisely because it executes
+nothing. That is the case an application database cannot make credibly and a
+chain can: not "the system ran safely," but "the system was asked to do
+something unsafe, and refused, and cannot quietly take that back."
+
+---
+
 ## The Solution
 
 ARF Onchain provides programmable governance for autonomous economic agents.
