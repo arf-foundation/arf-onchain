@@ -456,11 +456,15 @@ Chain ID
 Expiration
 ```
 
-> **Currently incomplete.** `modelHash`, `riskScore`, `reversibility` and — most
-> importantly — `decision` are **not** part of `intentHash` and are not otherwise
-> covered by the evaluator's signature. The binding below therefore holds for
-> the transaction's _shape_ but not for the governance _verdict_ attached to it.
-> See [Known Limitations](#known-limitations).
+> `modelHash`, `riskScore`, `reversibility` and `decision` are not part of
+> `intentHash` itself, but all four are covered by the evaluator's EIP-712
+> signature over the whole `RiskAttestation` struct (see
+> [`AttestationLib.sol`](contracts/AttestationLib.sol)), so the binding below
+> holds for the governance _verdict_ as well as the transaction's shape.
+> Confirmed live on the currently deployed `ExecutionGuard`: calling
+> `hashAttestation()` with the same attestation but a different `decision`
+> returns a different digest. See [Known Limitations](#known-limitations)
+> item 1.
 
 The resulting:
 
@@ -524,8 +528,17 @@ The following are known gaps between the design above and the current code.
 They are listed here rather than in a separate document so that no reader
 mistakes intent for implementation.
 
+**A fix committed before a redeploy is live on the deployed contracts; a fix
+committed after one is not, until the next redeploy.** The last redeploy was
+2026-09-06 22:57 EDT (see [`docs/deployments.md`](docs/deployments.md)).
+Items 1, 2, 4 and 5 below all landed before that timestamp and were verified
+directly against the live contracts with `cast`, not assumed from source —
+each says so. Item 7 landed 2026-09-08, after the redeploy, and is the one
+gap that is genuinely still exploitable on the addresses in
+`docs/deployments.md` today.
+
 **1. ~~The evaluator signature does not cover the governance decision.~~ FIXED
-in source — deployed contracts still affected.**
+in source and confirmed live on the deployed contracts.**
 
 `ExecutionGuard` now verifies an EIP-712 signature over the entire
 `RiskAttestation` struct, so `decision`, `riskScore`, `reversibility` and
@@ -540,10 +553,13 @@ Covered by `test_Regression_DenyCannotBeExecutedAsApprove`,
 `test_Regression_EscalateCannotBeExecutedAsApprove`,
 `test_Regression_RiskScoreCannotBeFabricated`,
 `test_MutatingAnyAttestationFieldInvalidatesTheSignature` and
-`test_SignatureDoesNotTransferToAnotherGuardDeployment`.
+`test_SignatureDoesNotTransferToAnotherGuardDeployment`. Confirmed live:
+`cast call`ing the deployed `ExecutionGuard.hashAttestation()` with the same
+attestation and `decision` set to `APPROVE` vs. `DENY` returns two different
+digests.
 
 **2. ~~`RiskAttestationRegistry.recordAttestation` has no caller
-restriction.~~ FIXED in source — deployed contracts still affected.**
+restriction.~~ FIXED in source and confirmed live on the deployed contracts.**
 
 Only the bound `ExecutionGuard` may consume an attestation or emit
 `AttestationIssued`. The binding is set by the owner after deployment via
@@ -552,7 +568,10 @@ address; until it is set, execution fails closed.
 
 Covered by `test_Regression_OnlyGuardCanRecordAttestations`,
 `test_Regression_PreRecordingDoesNotBlockLegitimateExecution` and
-`test_ExecutionFailsClosedIfRegistryHasNoGuard`.
+`test_ExecutionFailsClosedIfRegistryHasNoGuard`. Confirmed live: calling the
+deployed `RiskAttestationRegistry.recordAttestation` directly, from an address
+that is not the guard, reverts with `"RiskAttestationRegistry: not the
+guard"`.
 
 **3. Exposure limits are not enforced.**
 
@@ -569,8 +588,8 @@ deleted because the value is already set on live registrations, and silently
 removing a limit an operator believes is in force would be worse than saying
 plainly that it never was.
 
-**4. ~~The agent id is supplied by the caller.~~ FIXED in source — deployed
-contracts still affected.**
+**4. ~~The agent id is supplied by the caller.~~ FIXED in source and confirmed
+live on the deployed contracts.**
 
 `AgentRegistry.registerAgent` derives the id as
 `keccak256(abi.encodePacked(wallet))` — the form `ExecutionGuard.execute()`
@@ -582,7 +601,8 @@ script existed solely to compute the id by hand.
 
 Covered by `test_RegistrationUsesTheIdTheGuardDerives`.
 
-**5. Refusals were not recorded on-chain at all.**
+**5. ~~Refusals were not recorded on-chain at all.~~ FIXED in source and
+confirmed live on the deployed contracts.**
 
 `ExecutionGuard` emitted `ExecutionDenied` and `ExecutionEscalated` and then
 reverted. A reverted transaction produces no logs, so neither event could ever
@@ -598,10 +618,14 @@ succeeds precisely because it executes nothing. Anchoring is permissionless
 consume the attestation, so a recorded denial does not block the approval that
 follows remediation. The dead events have been removed.
 
-**This is source-only. The deployed contracts have no `anchorDecision`, so
-every denial in the live system remains invisible.**
-
-Covered by `test/Anchoring.t.sol`.
+Covered by `test/Anchoring.t.sol`. Confirmed live: calling the deployed
+`RiskAttestationRegistry.anchorDecision` with a well-formed but unsigned
+attestation reverts with `"RiskAttestationRegistry: untrusted evaluator"` —
+proof the function exists and runs its real verification logic, not that it
+falls through to an unrelated fallback. `arf-onchain`'s own
+[`script/DemoStorageGovernance.s.sol`](script/DemoStorageGovernance.s.sol)
+exercises this end to end against a fresh local stack — see
+[Demo — Runnable Today](#demo--runnable-today).
 
 **6. `TreasuryVault` is not wired into the execution path** and its `withdraw`
 function checks the caller's own balance while being `onlyOwner`, so deposits
@@ -623,16 +647,22 @@ registered, active policy. "No policy applies" is `UNPOLICED_SPEC`
 named, hashed policy an owner registers via `PolicyRegistry.setPolicy` like
 any other, not an implicit default.
 
-**This is source-only. The deployed `ExecutionGuard` still contains the old
-`if (attestation.policyHash != bytes32(0))` bypass**, so a `bytes32(0)`
+**This is source-only, and unlike items 1, 2, 4 and 5 above, it was not fixed
+before the 2026-09-06 redeploy — it landed 2026-09-08, two days after.** The
+deployed `ExecutionGuard` still contains the old
+`if (attestation.policyHash != bytes32(0))` bypass, so a `bytes32(0)`
 attestation against the live contract still skips the policy check exactly as
-before.
+before. Confirmed live, not assumed: calling the deployed
+`PolicyRegistry.setPolicy` with a `bytes32(0)` hash as the owner succeeds
+rather than reverting with `"PolicyRegistry: zero hash is reserved"`. **This
+is the one item in this list that is still a real, live exploit against the
+addresses in [`docs/deployments.md`](docs/deployments.md).**
 
 `PolicyRegistry.setPolicy` also now refuses to register `bytes32(0)` at all
-(`require(policyHash != bytes32(0))`), so the reservation holds structurally
-rather than by convention — an owner mistake or a registration script with an
-uncomputed-hash bug cannot silently reactivate the old ambiguity by making
-zero an active policy.
+(`require(policyHash != bytes32(0))`) in source, so once redeployed the
+reservation will hold structurally rather than by convention — an owner
+mistake or a registration script with an uncomputed-hash bug will not be able
+to silently reactivate the old ambiguity by making zero an active policy.
 
 Covered by `test_UnregisteredZeroPolicyHashNoLongerBypassesTheCheck`,
 `test_ExplicitlyRegisteredUnpolicedSentinelAllowsExecution`, and
@@ -653,6 +683,7 @@ arf-onchain/
 ├── contracts/
 │   ├── AgentRegistry.sol
 │   ├── PolicyRegistry.sol
+│   ├── AttestationLib.sol
 │   ├── RiskAttestationRegistry.sol
 │   ├── ExecutionGuard.sol
 │   ├── TreasuryVault.sol
@@ -660,14 +691,18 @@ arf-onchain/
 │
 ├── script/
 │   ├── Deploy.s.sol
-│   ├── RegisterAgent.s.sol          # superseded — see RegisterAgentCorrect
-│   ├── RegisterAgentCorrect.s.sol
+│   ├── RegisterAgent.s.sol
 │   ├── TestExecutionGuard.s.sol
 │   └── DemoStorageGovernance.s.sol  # runnable — see Demo — Runnable Today
 │
 ├── test/
+│   ├── Harness.sol                  # shared setup, not a test suite itself
 │   ├── AgentRegistry.t.sol
-│   └── ExecutionGuard.t.sol         # placeholder — see Run the Test Suite
+│   ├── PolicyRegistry.t.sol
+│   ├── ExecutionGuard.t.sol
+│   ├── Anchoring.t.sol
+│   ├── OffchainSignature.t.sol
+│   └── attack_scenarios.t.sol
 │
 ├── docs/
 │   └── deployments.md
@@ -746,15 +781,25 @@ Compiler run successful
 forge test -vv
 ```
 
-37 tests across three files:
+69 tests across six suites:
 
-- `test/Harness.sol` — shared setup and EIP-712 signing helpers.
-- `test/ExecutionGuard.t.sol` — the checks in `execute()`: decisions, identity,
-  caller authorization, evaluator trust and rotation, signature validity,
-  EIP-712 field binding and domain separation, expiry, replay, intent binding,
-  policy state, and registry binding.
-- `test/attack_scenarios.t.sol` — the adversarial regressions for the two fixed
-  flaws.
+- `test/Harness.sol` — shared setup and EIP-712 signing helpers, not a suite
+  itself.
+- `test/ExecutionGuard.t.sol` (29 tests) — the checks in `execute()`:
+  decisions, identity, caller authorization, evaluator trust and rotation,
+  signature validity, EIP-712 field binding and domain separation, expiry,
+  replay, intent binding, policy state, and registry binding.
+- `test/Anchoring.t.sol` (13 tests) — `anchorDecision`: permissionless
+  recording of every verdict including refusals, replay of an already-anchored
+  digest, and the separation from `usedAttestations`.
+- `test/AgentRegistry.t.sol` (8 tests) — registration, derived agent ids,
+  activation state.
+- `test/PolicyRegistry.t.sol` (7 tests) — policy registration, the zero-hash
+  reservation, activation and deactivation.
+- `test/OffchainSignature.t.sol` (7 tests) — the off-chain signer's encoding
+  against `AttestationLib`'s, pinned so the two cannot drift silently.
+- `test/attack_scenarios.t.sol` (5 tests) — the adversarial regressions for
+  the historically fixed flaws.
 
 Two tests document current behavior rather than assert desired behavior:
 `test_PerTransactionLimitIsUnreachableForZeroValueCalls` and
@@ -1239,9 +1284,12 @@ implementation, and the addresses in [`docs/deployments.md`](docs/deployments.md
 should be treated as a demo, not a target.
 
 Read [Known Limitations](#known-limitations) before drawing any conclusion about
-what this protocol enforces. In particular, the evaluator signature does not
-currently bind the governance decision, so the execution boundary can be
-bypassed by the caller.
+what this protocol enforces. In particular, `PolicyRegistry.setPolicy` on the
+**currently deployed** contracts does not yet reject a `bytes32(0)` policy
+hash, so `ExecutionGuard.execute()`'s old zero-hash policy bypass — fixed in
+source, not yet redeployed — remains live against the addresses in
+[`docs/deployments.md`](docs/deployments.md). See [Known Limitations](#known-limitations)
+item 7, verified directly against chain, not assumed from source.
 
 A threat model and a formal security policy are planned but not yet written.
 Until then, report anything you find by opening an issue or contacting the

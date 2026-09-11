@@ -24,8 +24,11 @@ below.
 **Deployer / owner:** `0x444F1f04451b4216854e1241228E999020b0D0d5`
 **Trusted evaluator:** `0xb1C0e84Ed50d74eBd107624ec9B97334E242F36a`
 **Addresses documented:** 2026-09-06
-**On-chain state last verified:** 2026-09-06 (every field below was read back
-from chain with `cast`, not copied from deploy logs)
+**On-chain state last verified:** 2026-09-11 (every field below re-read from
+chain with `cast` — `chain-id`, `agentRegistry()`, `policyRegistry()`,
+`trustedEvaluator()`, and the registered agent's `isActive` — all matched;
+originally documented 2026-09-06, when it was also read back rather than
+copied from deploy logs)
 
 ## Deployment status (2026-09-06)
 
